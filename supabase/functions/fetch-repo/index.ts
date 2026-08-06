@@ -142,32 +142,33 @@ Deno.serve(async (req: Request) => {
     const downloadUrl = `https://api.github.com/repos/${owner}/${repo}/zipball/${ref}`;
 
     const githubToken = Deno.env.get("GITHUB_TOKEN");
-    if (!githubToken) {
-      return new Response(
-        JSON.stringify({ error: "Server misconfigured: missing GITHUB_TOKEN" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+
+    // Build headers — use token if available, otherwise call unauthenticated
+    // (public repos work without a token, just with stricter rate limits)
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "codemap-edge-function",
+    };
+    if (githubToken) {
+      headers["Authorization"] = `Bearer ${githubToken}`;
     }
 
     // Fetch the zipball from GitHub
-    const zipResponse = await fetch(downloadUrl, {
-      headers: {
-        Authorization: `Bearer ${githubToken}`,
-        Accept: "application/vnd.github+json",
-        "User-Agent": "codemap-edge-function",
-      },
-      redirect: "follow",
-    });
+    const zipResponse = await fetch(downloadUrl, { headers, redirect: "follow" });
 
     if (!zipResponse.ok) {
+      const msg =
+        zipResponse.status === 401
+          ? "GitHub token is invalid or expired"
+          : zipResponse.status === 403 && !githubToken
+          ? "GitHub API rate limit exceeded. Try adding a GITHUB_TOKEN secret for higher limits."
+          : zipResponse.status === 404
+          ? "Repository not found"
+          : "Failed to fetch repository";
       return new Response(
         JSON.stringify({
           error: `GitHub API error: ${zipResponse.status}`,
-          message: zipResponse.status === 401
-            ? "GitHub token is invalid or expired"
-            : zipResponse.status === 404
-            ? "Repository not found"
-            : "Failed to fetch repository",
+          message: msg,
         }),
         { status: zipResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
