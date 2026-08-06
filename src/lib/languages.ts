@@ -172,3 +172,40 @@ export function shouldSkipFile(filePath: string): boolean {
 export function isLanguageSupported(filePath: string): boolean {
   return detectLanguage(filePath) !== "unsupported";
 }
+
+/**
+ * Unique supported languages with display names, grouped by category.
+ * Use this to show users what CodeMap can analyze.
+ */
+export const SUPPORTED_LANGUAGES: {
+  id: string;
+  display: string;
+  category: "Programming" | "Web" | "Config" | "Markup";
+}[] = [
+  { id: "javascript", display: "JavaScript", category: "Programming" },
+  { id: "typescript", display: "TypeScript", category: "Programming" },
+  { id: "python", display: "Python", category: "Programming" },
+  { id: "java", display: "Java", category: "Programming" },
+  { id: "go", display: "Go", category: "Programming" },
+  { id: "rust", display: "Rust", category: "Programming" },
+  { id: "c", display: "C", category: "Programming" },
+  { id: "cpp", display: "C++", category: "Programming" },
+  { id: "ruby", display: "Ruby", category: "Programming" },
+  { id: "php", display: "PHP", category: "Programming" },
+  { id: "swift", display: "Swift", category: "Programming" },
+  { id: "kotlin", display: "Kotlin", category: "Programming" },
+  { id: "scala", display: "Scala", category: "Programming" },
+  { id: "shell", display: "Shell", category: "Programming" },
+  { id: "html", display: "HTML", category: "Web" },
+  { id: "css", display: "CSS", category: "Web" },
+  { id: "vue", display: "Vue", category: "Web" },
+  { id: "svelte", display: "Svelte", category: "Web" },
+  { id: "astro", display: "Astro", category: "Web" },
+  { id: "json", display: "JSON", category: "Config" },
+  { id: "yaml", display: "YAML", category: "Config" },
+  { id: "toml", display: "TOML", category: "Config" },
+  { id: "xml", display: "XML", category: "Config" },
+  { id: "markdown", display: "Markdown", category: "Config" },
+  { id: "sql", display: "SQL", category: "Config" },
+  { id: "graphql", display: "GraphQL", category: "Config" },
+];

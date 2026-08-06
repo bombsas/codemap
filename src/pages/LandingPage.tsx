@@ -77,8 +77,9 @@ export default function LandingPage() {
               Parse Everything
             </h3>
             <p className="text-xs text-muted leading-relaxed">
-              Drop a GitHub URL, upload a ZIP, or paste files. Supports
-              JavaScript, TypeScript, Python, Java, Go, C, and C++.
+              Drop a GitHub URL, upload a ZIP, or paste files. Supports 20+
+              languages including JavaScript, TypeScript, Python, Java, Go,
+              Rust, C, C++, Ruby, PHP, Swift, Kotlin, and more.
             </p>
           </div>
 

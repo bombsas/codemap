@@ -1,7 +1,14 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { SiGithub } from "react-icons/si";
-import { Upload, FileCode, Terminal, ArrowLeft, Save } from "lucide-react";
+import {
+  Upload,
+  FileCode,
+  Terminal,
+  ArrowLeft,
+  Save,
+  CheckCircle,
+} from "lucide-react";
 import PageLayout from "../components/layout/PageLayout";
 import GitHubForm from "../components/analysis/GitHubForm";
 import ZipUpload from "../components/analysis/ZipUpload";
@@ -11,7 +18,15 @@ import { useParser } from "../hooks/useParser";
 import { useExplanation } from "../hooks/useExplanation";
 import { saveAnalysis } from "../hooks/useSaveAnalysis";
 import type { AnalysisFile } from "../types/analysis";
-import { detectLanguage } from "../lib/languages";
+import { detectLanguage, SUPPORTED_LANGUAGES } from "../lib/languages";
+
+/** Group languages by category for the supported-languages display. */
+const LANG_GROUPS = SUPPORTED_LANGUAGES.reduce<
+  Record<string, { id: string; display: string }[]>
+>((acc, l) => {
+  (acc[l.category] ??= []).push({ id: l.id, display: l.display });
+  return acc;
+}, {} as Record<string, { id: string; display: string }[]>);
 
 type InputMethod = "github" | "zip" | "paste";
 
@@ -266,6 +281,35 @@ export default function NewAnalysisPage() {
                 Import your codebase to visualize its structure, dependencies,
                 and get AI-powered explanations.
               </p>
+            </div>
+
+            {/* Supported languages banner */}
+            <div className="mb-6 bg-surface border border-border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle className="w-3.5 h-3.5 text-accent shrink-0" />
+                <span className="text-xs font-heading text-foreground tracking-wide">
+                  We can analyze these languages
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {(["Programming", "Web", "Config"] as const).map(
+                  (category) => (
+                    <div key={category} className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] text-muted uppercase tracking-wider mr-0.5">
+                        {category}:
+                      </span>
+                      {LANG_GROUPS[category]?.map((lang) => (
+                        <span
+                          key={lang.id}
+                          className="text-[11px] px-1.5 py-0.5 rounded bg-accent/8 text-accent/90 border border-accent/15 font-mono"
+                        >
+                          {lang.display}
+                        </span>
+                      ))}
+                    </div>
+                  ),
+                )}
+              </div>
             </div>
 
             <div className="flex gap-2 mb-6">
