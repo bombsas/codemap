@@ -100,21 +100,43 @@ export default function NewAnalysisPage() {
     }
   }, [parser.status, parser.project, pipelineStep, explainer]);
 
-  // When explainer finishes → move to building step (stub for now)
+  // When explainer finishes → move to building step, then navigate to the
+  // visualization workspace with the parsed project + explanations in state.
   useEffect(() => {
     if (pipelineStep !== "explaining") return;
     if (explainer.status === "done") {
       setPipelineStep("building");
-      // Stub: simulate visualization build
       const t = setTimeout(() => {
         setPipelineStep("complete");
-      }, 800);
+        if (parser.project) {
+          const project = parser.project; // capture for closure
+          const explanations = Object.fromEntries(explainer.explanations);
+          navigate(`/analysis/${Date.now()}`, {
+            state: {
+              project,
+              explanations,
+              failedIds: explainer.failedIds,
+              name: collectedFiles?.[0]?.path
+                ? `${collectedFiles.length} files`
+                : "Analysis",
+            },
+          });
+        }
+      }, 600);
       return () => clearTimeout(t);
     }
     if (explainer.status === "error") {
       setPipelineStep("error");
     }
-  }, [explainer.status, pipelineStep]);
+  }, [
+    explainer.status,
+    explainer.explanations,
+    explainer.failedIds,
+    parser.project,
+    pipelineStep,
+    navigate,
+    collectedFiles,
+  ]);
 
   /* ── Navigate back / reset ───────────────────────────────────────── */
 

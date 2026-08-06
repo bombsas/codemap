@@ -11,6 +11,9 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.112.1",
     "@tailwindcss/vite": "^4.1.18",
+    "@xyflow/react": "^12.11.2",
+    "dagre": "^0.8.5",
+    "elkjs": "^0.12.0",
     "fflate": "^0.8.3",
     "lucide-react": "^1.28.0",
     "react": "^19.2.8",
@@ -19,10 +22,12 @@
     "react-router-dom": "^7.18.2",
     "tailwindcss": "^4.1.18",
     "tree-sitter-wasms": "^0.1.13",
-    "web-tree-sitter": "^0.20.8"
+    "web-tree-sitter": "^0.20.8",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@playwright/cli": "^0.1.18",
+    "@types/dagre": "^0.7.54",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
