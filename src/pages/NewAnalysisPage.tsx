@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { SiGithub } from "react-icons/si";
 import { Upload, FileCode, Terminal, ArrowLeft, Save } from "lucide-react";
@@ -209,6 +209,27 @@ export default function NewAnalysisPage() {
   const explainProgress = explainer.progress;
   const totalFunctions = explainProgress.totalFunctions;
 
+  // Lookup map: functionId → { filePath, functionName }
+  const fnLookup = useMemo(() => {
+    const map = new Map<string, { filePath: string; functionName: string }>();
+    if (parser.project) {
+      for (const f of parser.project.files) {
+        for (const fn of f.functions) {
+          map.set(fn.id, { filePath: f.path, functionName: fn.qualifiedName ?? fn.name });
+        }
+      }
+    }
+    return map;
+  }, [parser.project]);
+
+  // Resolve current function being explained to a human-readable string
+  const currentExplainInfo = useMemo(() => {
+    const id = explainProgress.currentFunctionId;
+    if (!id) return null;
+    const info = fnLookup.get(id);
+    return info ?? null;
+  }, [explainProgress.currentFunctionId, fnLookup]);
+
   return (
     <PageLayout>
       <div className="max-w-2xl mx-auto">
@@ -307,17 +328,42 @@ export default function NewAnalysisPage() {
 
               {/* Live progress details */}
               {pipelineStep === "parsing" && parseProgress.total > 0 && (
-                <p className="text-xs text-muted text-center mt-4">
-                  Parsed {parseProgress.parsed} of {parseProgress.total} files
-                </p>
+                <div className="mt-4 text-center space-y-2">
+                  <p className="text-xs text-muted">
+                    Parsed {parseProgress.parsed} of {parseProgress.total} files
+                  </p>
+                  {parseProgress.currentFile && (
+                    <p className="text-[11px] font-mono text-accent/80 truncate max-w-full px-4">
+                      Parsing: {parseProgress.currentFile}
+                    </p>
+                  )}
+                </div>
+              )}
+              {pipelineStep === "analyzing" && (
+                <div className="mt-4 text-center space-y-2">
+                  <p className="text-xs text-muted">
+                    Building dependency graph…
+                  </p>
+                  <p className="text-[11px] font-mono text-accent/80">
+                    Resolving cross-file references
+                  </p>
+                </div>
               )}
               {pipelineStep === "explaining" && totalFunctions > 0 && (
-                <p className="text-xs text-muted text-center mt-4">
-                  Explaining {explainProgress.explained} of {totalFunctions}{" "}
-                  functions
-                  {explainer.failedIds.length > 0 &&
-                    ` · ${explainer.failedIds.length} failed`}
-                </p>
+                <div className="mt-4 text-center space-y-2">
+                  <p className="text-xs text-muted">
+                    Explaining {explainProgress.explained} of {totalFunctions}{" "}
+                    functions
+                    {explainer.failedIds.length > 0 &&
+                      ` · ${explainer.failedIds.length} failed`}
+                  </p>
+                  {currentExplainInfo && (
+                    <p className="text-[11px] font-mono text-accent/80 truncate max-w-full px-4">
+                      Explaining: {currentExplainInfo.functionName} from{" "}
+                      {currentExplainInfo.filePath}
+                    </p>
+                  )}
+                </div>
               )}
               {pipelineStep === "building" && (
                 <div className="mt-4 text-center">

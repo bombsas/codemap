@@ -28,7 +28,7 @@ export interface UseExplanationResult {
   explanations: Map<string, FunctionExplanation>;
   /** IDs of functions whose explanation failed after all retries. */
   failedIds: string[];
-  progress: { explained: number; totalFunctions: number };
+  progress: { explained: number; totalFunctions: number; currentFunctionId?: string };
   error: string | null;
   run: (project: ParsedProject) => void;
   /** Retry only the functions that previously failed. */
@@ -49,6 +49,7 @@ export function useExplanation(): UseExplanationResult {
   const [progress, setProgress] = useState<{
     explained: number;
     totalFunctions: number;
+    currentFunctionId?: string;
   }>({ explained: 0, totalFunctions: 0 });
   const [error, setError] = useState<string | null>(null);
   const runIdRef = useRef(0);
@@ -96,6 +97,12 @@ export function useExplanation(): UseExplanationResult {
 
         const batch = batches[b];
         let lastError: string | null = null;
+
+        // Show which function we're currently explaining
+        const currentFnId = batch[0]?.functionId;
+        if (runIdRef.current === myId && currentFnId) {
+          setProgress((prev) => ({ ...prev, currentFunctionId: currentFnId }));
+        }
 
         // Retry loop for this batch
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -180,6 +187,7 @@ export function useExplanation(): UseExplanationResult {
         return next;
       });
       setFailedIds(failed);
+      setProgress((prev) => ({ ...prev, currentFunctionId: undefined }));
       setStatus(failed.length > 0 && accumulated.size === 0 ? "error" : "done");
     },
     [],

@@ -740,7 +740,7 @@ function buildDependencyGraph(files: ParsedFile[]): ParsedDependency[] {
 
 export async function parseProject(
   files: AnalysisFile[],
-  onProgress?: (done: number, total: number) => void,
+  onProgress?: (done: number, total: number, currentFile?: string) => void,
 ): Promise<ParsedProject> {
   const supported: AnalysisFile[] = [];
   const unsupported: string[] = [];
@@ -762,7 +762,7 @@ export async function parseProject(
     } catch {
       unparseableFiles.push(supported[i].path);
     }
-    onProgress?.(i + 1, supported.length);
+    onProgress?.(i + 1, supported.length, supported[i].path);
   }
 
   const dependencies = buildDependencyGraph(parsedFiles);
@@ -781,7 +781,7 @@ export interface UseParserResult {
   status: "idle" | "parsing" | "done" | "error";
   project: ParsedProject | null;
   error: string | null;
-  progress: { parsed: number; total: number };
+  progress: { parsed: number; total: number; currentFile?: string };
   run: (files: AnalysisFile[]) => void;
   reset: () => void;
 }
@@ -790,7 +790,7 @@ export function useParser(): UseParserResult {
   const [status, setStatus] = useState<"idle" | "parsing" | "done" | "error">("idle");
   const [project, setProject] = useState<ParsedProject | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<{ parsed: number; total: number }>({
+  const [progress, setProgress] = useState<{ parsed: number; total: number; currentFile?: string }>({
     parsed: 0,
     total: 0,
   });
@@ -812,8 +812,8 @@ export function useParser(): UseParserResult {
       setProject(null);
       setProgress({ parsed: 0, total: files.length });
       try {
-        const result = await parseProject(files, (parsed, total) => {
-          if (parseIdRef.current === myId) setProgress({ parsed, total });
+        const result = await parseProject(files, (parsed, total, currentFile) => {
+          if (parseIdRef.current === myId) setProgress({ parsed, total, currentFile });
         });
         if (parseIdRef.current !== myId) return;
         setProject(result);
