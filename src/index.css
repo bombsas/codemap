@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Fira Code", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-heading: "Share Tech Mono", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --color-primary: oklch(0.2795 0.0368 260.03);
+  --color-on-primary: oklch(1.0 0 0);
+  --color-secondary: oklch(0.3717 0.0392 257.29);
+  --color-accent: oklch(0.7227 0.192 149.58);
+  --color-background: oklch(0.2077 0.0398 265.75);
+  --color-foreground: oklch(0.9842 0.0034 247.86);
+  --color-muted: oklch(0.3065 0.0362 266.64);
+  --color-border: oklch(0.4455 0.0374 257.28);
+  --color-destructive: oklch(0.6368 0.2078 25.33);
+  --color-ring: oklch(0.2795 0.0368 260.03);
+  --color-surface: oklch(0.16 0.04 265.75);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted);
+}
+
+/* Base */
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Focus visible */
+*:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+/* Selection */
+::selection {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
