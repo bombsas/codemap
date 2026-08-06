@@ -12,11 +12,20 @@ const VIEWS: { mode: ViewMode; label: string; Icon: typeof LayoutGrid }[] = [
   { mode: "mindmap", label: "Mind-map", Icon: GitFork },
 ];
 
-function ViewToggleComponent() {
+interface ViewToggleProps {
+  /** Optional callback fired after the active view changes (e.g. reset highlight). */
+  onViewChange?: () => void;
+}
+
+function ViewToggleComponent({ onViewChange }: ViewToggleProps) {
   const { viewMode, setViewMode } = useVisualizationStore();
 
   return (
-    <div className="flex items-center overflow-hidden rounded-lg border border-border bg-surface">
+    <div
+      className="flex items-center overflow-hidden rounded-lg border border-border bg-surface"
+      role="group"
+      aria-label="Visualization view"
+    >
       {VIEWS.map(({ mode, label, Icon }) => {
         const active = viewMode === mode;
         return (
@@ -27,7 +36,11 @@ function ViewToggleComponent() {
                 ? "bg-accent text-background font-semibold"
                 : "text-muted hover:text-foreground hover:bg-muted/30"
             }`}
-            onClick={() => setViewMode(mode)}
+            onClick={() => {
+              setViewMode(mode);
+              onViewChange?.();
+            }}
+            aria-pressed={active}
           >
             <Icon size={14} />
             <span className="hidden sm:inline">{label}</span>

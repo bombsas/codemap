@@ -35,6 +35,8 @@ const FUNC_GAP = 12;
 const FILE_HEADER_H = 36;
 const DEP_NODE_W = 200;
 const DEP_NODE_H = 60;
+const DEP_FN_W = 190;
+const DEP_FN_H = 46;
 const MIND_NODE_W = 180;
 const MIND_NODE_H = 52;
 
@@ -238,6 +240,101 @@ function buildDependencyLayout(
   return { nodes, edges };
 }
 
+/* ── Function-level dependency graph (dagre) ────────────────────── */
+
+function buildFunctionDependencyLayout(
+  project: ParsedProject,
+  activeEdgeTypes: EdgeTypeFilter[],
+): GraphNodesEdges {
+  const g = new dagre.graphlib.Graph({ multigraph: true });
+  g.setGraph({ rankdir: "LR", nodesep: 24, ranksep: 80 });
+  g.setDefaultEdgeLabel(() => ({}));
+
+  // All symbols (functions, methods, classes) as nodes
+  const fnIdByKey = new Map<string, string>(); // qualifiedName -> node id
+  for (const file of project.files) {
+    for (const fn of file.functions) {
+      const key = fn.qualifiedName ?? fn.name;
+      fnIdByKey.set(`${file.path}:${key}`, `depfn:${fn.id}`);
+    }
+  }
+
+  for (const file of project.files) {
+    for (const fn of file.functions) {
+      g.setNode(`depfn:${fn.id}`, { width: DEP_FN_W, height: DEP_FN_H });
+    }
+  }
+
+  // Edges: only function-level dependencies (calls / extends / implements)
+  const relevant = project.dependencies.filter(
+    (d) =>
+      activeEdgeTypes.includes(d.type) &&
+      d.sourceFunction &&
+      d.targetFunction &&
+      d.sourceFile &&
+      d.targetFile,
+  );
+
+  for (const dep of relevant) {
+    const s = fnIdByKey.get(`${dep.sourceFile}:${dep.sourceFunction}`);
+    const t = fnIdByKey.get(`${dep.targetFile}:${dep.targetFunction}`);
+    if (!s || !t || s === t) continue;
+    g.setEdge(s, t, { edgeType: dep.type });
+  }
+
+  dagre.layout(g);
+
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+
+  for (const v of g.nodes()) {
+    const { x, y } = g.node(v);
+    const fnId = v.slice("depfn:".length);
+    let label = fnId;
+    let filePath = "";
+    let language: string | undefined;
+    let kind = "function";
+    for (const file of project.files) {
+      const fn = file.functions.find((f) => f.id === fnId);
+      if (fn) {
+        label = fn.qualifiedName ?? fn.name;
+        filePath = file.path;
+        language = file.language;
+        kind = fn.kind;
+        break;
+      }
+    }
+    nodes.push({
+      id: v,
+      type: "depNode",
+      position: { x: x - DEP_FN_W / 2, y: y - DEP_FN_H / 2 },
+      data: {
+        filePath,
+        label,
+        language,
+        kind,
+        functionId: fnId,
+      },
+      style: { width: DEP_FN_W, height: DEP_FN_H },
+    });
+  }
+
+  for (const e of g.edges()) {
+    const edgeType: string = g.edge(e).edgeType ?? "calls";
+    edges.push({
+      id: `e:depfn:${e.v}:${e.w}`,
+      source: e.v,
+      target: e.w,
+      type: "depEdge",
+      data: { edgeType },
+      style: { stroke: depColor(edgeType), strokeWidth: 2 },
+      label: depLabel(edgeType),
+    });
+  }
+
+  return { nodes, edges };
+}
+
 /* ── Mind-map (elkjs, async) ─────────────────────────────────────── */
 
 async function buildMindMapLayout(
@@ -351,6 +448,7 @@ export function useGraphLayout(
   expanded: Record<string, boolean>,
   explanations: Map<string, FunctionExplanation>,
   activeEdgeTypes: EdgeTypeFilter[],
+  dependencyDetail: "file" | "function" = "file",
 ): GraphNodesEdges {
   return useMemo<GraphNodesEdges>(() => {
     if (!project) return { nodes: [], edges: [] };
@@ -358,11 +456,13 @@ export function useGraphLayout(
       case "block":
         return buildBlockLayout(project, expanded, explanations);
       case "dependency":
-        return buildDependencyLayout(project, activeEdgeTypes);
+        return dependencyDetail === "function"
+          ? buildFunctionDependencyLayout(project, activeEdgeTypes)
+          : buildDependencyLayout(project, activeEdgeTypes);
       default:
         return { nodes: [], edges: [] };
     }
-  }, [project, viewMode, expanded, explanations, activeEdgeTypes]);
+  }, [project, viewMode, expanded, explanations, activeEdgeTypes, dependencyDetail]);
 }
 
 /* ── Async hook (mind-map via elkjs) ─────────────────────────────── */

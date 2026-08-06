@@ -36,6 +36,7 @@ export default function AnalysisView() {
   const location = useLocation();
   const navigate = useNavigate();
   const resetViz = useVisualizationStore((s) => s.reset);
+  const panelOpen = useVisualizationStore((s) => s.panelOpen);
 
   const state = location.state as AnalysisViewLocationState | null;
   const project = state?.project ?? null;
@@ -125,8 +126,13 @@ export default function AnalysisView() {
           <div className="min-w-0 flex-1">
             <GraphCanvas project={project} explanations={explanations} />
           </div>
-          {/* Inspector panel — fixed width, collapses to 0 when closed */}
-          <div className="flex h-full shrink-0 overflow-hidden transition-[width] duration-200 ease-out w-[380px] max-sm:w-[300px]">
+          {/* Inspector panel — animates to 0 width when closed */}
+          <div
+            className={`flex h-full shrink-0 overflow-hidden transition-[width] duration-200 ease-out ${
+              panelOpen ? "w-[380px] max-sm:w-[300px]" : "w-0"
+            }`}
+            aria-hidden={!panelOpen}
+          >
             <DetailPanel project={project} explanations={explainer} />
           </div>
         </div>

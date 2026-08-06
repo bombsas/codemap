@@ -5,8 +5,8 @@
  *   logic) + source code toggle + retry option on failure.
  * - Clicking a file node → shows file path + list of functions + full file source.
  */
-import { memo } from "react";
-import { X, RefreshCw } from "lucide-react";
+import { memo, useState, useEffect } from "react";
+import { X, RefreshCw, Braces, ChevronDown, ChevronRight } from "lucide-react";
 import { useVisualizationStore } from "../../store/visualizationStore";
 import SourceCodeView from "./SourceCodeView";
 import type { ParsedProject } from "../../types";
@@ -21,6 +21,12 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
   const selectedNodeId = useVisualizationStore((s) => s.selectedNodeId);
   const panelOpen = useVisualizationStore((s) => s.panelOpen);
   const closePanel = useVisualizationStore((s) => s.closePanel);
+  const [showSource, setShowSource] = useState(false);
+
+  // Reset the source toggle whenever a different node is inspected
+  useEffect(() => {
+    setShowSource(false);
+  }, [selectedNodeId]);
 
   if (!panelOpen || !project || !selectedNodeId) return null;
 
@@ -44,6 +50,18 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
     const failed = explanations.failedIds.includes(functionId);
 
     if (!fn) return null;
+
+    const SourceToggle = (
+      <button
+        className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded border border-border/60 px-3 py-1.5 text-[10px] text-muted transition-colors duration-150 hover:border-accent/50 hover:text-foreground active:scale-[0.98]"
+        onClick={() => setShowSource((v) => !v)}
+        aria-expanded={showSource}
+      >
+        {showSource ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        <Braces size={11} />
+        {showSource ? "Hide source" : "View source"}
+      </button>
+    );
 
     return (
       <div className="flex h-full w-full flex-col overflow-hidden border-l border-border bg-surface/90 backdrop-blur-sm">
@@ -171,17 +189,17 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
             </div>
           )}
 
-          {/* Source code */}
+          {/* Source code — collapsed by default, toggle to view */}
           {file && (
-            <section>
-              <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Source code
-              </h3>
-              <SourceCodeView
-                code={fn.codeSnippet}
-                language={file.language}
-                maxHeight={500}
-              />
+            <section className="space-y-1.5">
+              {SourceToggle}
+              {showSource && (
+                <SourceCodeView
+                  code={fn.codeSnippet}
+                  language={file.language}
+                  maxHeight={500}
+                />
+              )}
             </section>
           )}
         </div>

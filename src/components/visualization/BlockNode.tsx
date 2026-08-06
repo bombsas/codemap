@@ -104,7 +104,10 @@ function BlockNodeComponent({ data: rawData, selected }: NodeProps) {
       {/* Header row */}
       <div
         className="flex cursor-pointer items-center gap-2 px-3 py-2"
-        onClick={() => toggleExpand(fn.id)}
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleExpand(fn.id);
+        }}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => {
