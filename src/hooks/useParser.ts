@@ -14,7 +14,6 @@ import type {
   AnalysisFile,
   CallSite,
   ClassHierarchy,
-  DependencyType,
   ExtractedFunction,
   FunctionKind,
   ParsedDependency,
@@ -80,12 +79,6 @@ function cap(match: Parser.QueryMatch, name: string): Parser.SyntaxNode | null {
   return null;
 }
 
-function caps(matches: Parser.QueryMatch[], name: string): Parser.SyntaxNode[] {
-  const out: Parser.SyntaxNode[] = [];
-  for (const m of matches) for (const c of m.captures) if (c.name === name) out.push(c.node);
-  return out;
-}
-
 function nLines(n: Parser.SyntaxNode): [number, number] {
   return [n.startPosition.row + 1, n.endPosition.row + 1];
 }
@@ -104,7 +97,11 @@ function paramEnd(
   return null;
 }
 
-/** Walk a C/C++ function_declarator chain to find the leaf identifier. */
+/**
+ * Walk a C/C++ function_declarator chain to find the leaf identifier.
+ * Handles pointer/reference/parenthesized wrappers, `Foo::bar` qualified
+ * names, `operator+` overloads and `~Foo` destructors.
+ */
 function walkCDef(
   declNode: Parser.SyntaxNode,
 ): { name: string; kind: "function" | "method"; paramNode: Parser.SyntaxNode | null } | null {
@@ -116,35 +113,50 @@ function walkCDef(
   while (cur && !seen.has(cur.id)) {
     seen.add(cur.id);
 
-    // Capture parameter list if we hit one
+    // Remember the first parameter list we encounter
     if (!paramNode) {
       const pl = cur.children.find(
-        (c) =>
-          c.type === "parameter_list" || c.type === "template_parameter_list",
+        (c) => c.type === "parameter_list" || c.type === "template_parameter_list",
       );
       if (pl) paramNode = pl;
     }
 
-    // Found an identifier = leaf name
+    // Leaf name nodes
     if (cur.type === "identifier" || cur.type === "field_identifier") {
       leaf = cur;
       break;
     }
+    if (cur.type === "operator_name") {
+      leaf = cur;
+      break;
+    }
+    if (cur.type === "destructor_name") {
+      leaf = cur; // text is "~Foo"
+      break;
+    }
 
-    // Walk child
+    // Qualified names: Foo::bar → descend into the `name` field
+    if (cur.type === "qualified_identifier") {
+      cur = cur.childForFieldName("name") ?? cur.firstNamedChild;
+      continue;
+    }
+    if (cur.type === "namespace_identifier") {
+      cur = cur.firstNamedChild;
+      continue;
+    }
+
+    // Generic walk into the declarator chain
     const child = cur.childForFieldName("declarator") ?? cur.firstNamedChild;
     if (child && !seen.has(child.id)) {
       cur = child;
     } else {
-      // No more children — current node may be the leaf (e.g. parenthesized)
       break;
     }
   }
 
-  // If we found identifier in function_declarator's declarator chain, it's the name
-  // If we didn't, fall back to text of the declNode (e.g. operator overload)
   const name = leaf?.text ?? declNode.text;
-  const kind: "function" | "method" = leaf?.type === "field_identifier" ? "method" : "function";
+  const kind: "function" | "method" =
+    leaf?.type === "field_identifier" ? "method" : "function";
   return { name, kind, paramNode };
 }
 
@@ -174,22 +186,22 @@ function classSignature(source: string, defNode: Parser.SyntaxNode): string {
   return source.slice(defNode.startIndex, end).trim().replace(/\s+/g, " ");
 }
 
-function enclosingClassName(node: Parser.SyntaxNode): string | null {
+function enclosingClassName(node: Parser.SyntaxNode): string | undefined {
   let cur: Parser.SyntaxNode | null = node.parent;
   while (cur) {
     if (["class_body", "field_declaration_list", "interface_body"].includes(cur.type)) {
       const p = cur.parent;
-      if (!p) return null;
+      if (!p) return undefined;
       const nn =
         p.childForFieldName("name") ??
         p.children.find((c) =>
           ["identifier", "type_identifier", "property_identifier"].includes(c.type),
         );
-      return nn?.text ?? null;
+      return nn?.text ?? undefined;
     }
     cur = cur.parent;
   }
-  return null;
+  return undefined;
 }
 
 function makeId(path: string, name: string, kind: string, line: number): string {
@@ -214,11 +226,9 @@ function extractDefFunctions(
     const isMethod = !!cap(m, "method.name") || !!cap(m, "method.definition");
     const defName = isMethod ? "method.definition" : "function.definition";
     const nameName = isMethod ? "method.name" : "function.name";
-    const bodyName = isMethod ? "method.body" : "function.body";
 
     const defNode = cap(m, defName);
     const nameNode = cap(m, nameName);
-    const bodyNode = cap(m, bodyName);
     if (!defNode || !nameNode) continue;
 
     // Deduplicate: same defNode used by multiple match groups
@@ -230,10 +240,19 @@ function extractDefFunctions(
     const lines = nLines(defNode);
     const codeSnippet = source.slice(defNode.startIndex, defNode.endIndex);
 
-    const kind: FunctionKind = isMethod ? "method" : "function";
+    // Python has no separate method pattern — methods are function_definition
+    // nodes inside class bodies. Detect them by walking the ancestors.
+    let kind: FunctionKind = isMethod ? "method" : "function";
+    let parentClass = isMethod ? enclosingClassName(defNode) : undefined;
+    if (!isMethod) {
+      const cls = enclosingClassName(defNode);
+      if (cls) {
+        kind = "method";
+        parentClass = cls;
+      }
+    }
     const pEnd = paramEnd(m, ["method.params", "function.params"]);
     const signature = buildSignature(source, defNode, pEnd);
-    const parentClass = isMethod ? enclosingClassName(defNode) : undefined;
     const qualifiedName = parentClass ? `${parentClass}.${name}` : name;
 
     out.push({
@@ -268,7 +287,6 @@ function extractJavaMethods(
   for (const m of matches) {
     const defNode = cap(m, "method.definition");
     const nameNode = cap(m, "method.name");
-    const bodyNode = cap(m, "method.body");
     if (!defNode || !nameNode) continue;
 
     const key = defNode.id;
@@ -351,11 +369,17 @@ function extractCFamilyFunctions(
 
 /* ── Class extractor (all languages) ──────────────────────────────── */
 
-function extractClasses(
-  source: string,
-  filePath: string,
-  matches: Parser.QueryMatch[],
-): ClassHierarchy[] {
+/** Normalize raw superclass/interface text to a list of clean names. */
+function normalizeSuper(raw: string): string[] {
+  return raw
+    .replace(/^\s*(extends|implements|:)\s*/i, "")
+    .replace(/^\s*(public|private|protected|virtual)\s+/i, "")
+    .split(/\s*,\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function extractClasses(matches: Parser.QueryMatch[]): ClassHierarchy[] {
   const out: ClassHierarchy[] = [];
   const seen = new Set<number>();
 
@@ -366,16 +390,16 @@ function extractClasses(
     if (seen.has(defNode.id)) continue;
     seen.add(defNode.id);
 
-    const ext = caps(matches, "class.super").map((n) => n.text);
-    const impl = caps(matches, "class.implements").map((n) => n.text);
+    const ext: string[] = [];
+    const impl: string[] = [];
+    for (const c of m.captures) {
+      if (c.name === "class.super") ext.push(...normalizeSuper(c.node.text));
+      else if (c.name === "class.implements" || c.name === "class.interfaces")
+        impl.push(...normalizeSuper(c.node.text));
+    }
 
-    out.push({
-      name: nameNode.text,
-      extends: ext,
-      implements: impl,
-    });
+    out.push({ name: nameNode.text, extends: ext, implements: impl });
   }
-
   return out;
 }
 
@@ -418,15 +442,25 @@ function normalizeImport(raw: string): string {
   return s;
 }
 
-function extractImports(
-  matches: Parser.QueryMatch[],
-  source: string,
-): string[] {
-  const sources = caps(matches, "import.source");
+function extractImports(matches: Parser.QueryMatch[]): string[] {
   const mods = new Set<string>();
-  for (const n of sources) {
-    const mod = normalizeImport(n.text);
-    if (mod) mods.add(mod);
+  for (const m of matches) {
+    const node = cap(m, "import.node");
+    if (!node) continue;
+    const src = cap(m, "import.source");
+    if (src) {
+      const mod = normalizeImport(src.text);
+      if (mod) mods.add(mod);
+      continue;
+    }
+    // Plain import with no source capture (python: `import os`, `import os, sys`)
+    if (node.type === "import_statement") {
+      const body = node.text.replace(/^import\s+/, "");
+      for (const part of body.split(",")) {
+        const name = part.trim().split(/\s+as\s+/)[0].trim();
+        if (name) mods.add(name);
+      }
+    }
   }
   return [...mods];
 }
@@ -456,8 +490,8 @@ async function parseSingleFile(
 
   // Extract symbols
   const callSites = extractCalls(m);
-  const fileImports = extractImports(m, file.content);
-  const classHierarchies = extractClasses(file.content, file.path, m);
+  const fileImports = extractImports(m);
+  const classHierarchies = extractClasses(m);
 
   let functions: ExtractedFunction[];
 
@@ -469,31 +503,47 @@ async function parseSingleFile(
     functions = extractDefFunctions(file.content, file.path, m);
   }
 
-  // Step 2: assign calls & imports to each function based on source range
-  for (const fn of functions) {
-    const fnStart = fn.startLine; // 1-based — convert to 0-based index
-    const fnEnd = fn.endLine;
-    // We use startLine/endLine as approximate range; for precision we'd
-    // need the original node. Since we don't store it, approximate via
-    // line ranges.
-    const inRange = (cs: CallSite, start: number, end: number) =>
-      cs.startIndex >= start && cs.endIndex <= end;
-    // Map lines back to file.content positions
-    const lines = file.content.split("\n");
-    let charStart = 0;
-    for (let i = 0; i < fnStart - 1; i++) charStart += lines[i].length + 1;
-    let charEnd = charStart;
-    for (let i = fnStart - 1; i < fnEnd && i < lines.length; i++)
-      charEnd += lines[i].length + 1;
-
-    fn.calls = callSites
-      .filter((cs) => cs.startIndex >= charStart && cs.endIndex <= charEnd)
-      .map((cs) => cs.name);
-
-    fn.imports = []; // file-level imports are set on the ParsedFile
+  // Append class symbols (kind "class") to the unified symbol list
+  const classSeen = new Set<number>();
+  for (const mm of m) {
+    const defNode = cap(mm, "class.definition");
+    const nameNode = cap(mm, "class.name");
+    if (!defNode || !nameNode || classSeen.has(defNode.id)) continue;
+    classSeen.add(defNode.id);
+    const lines = nLines(defNode);
+    functions.push({
+      id: makeId(file.path, nameNode.text, "class", lines[0]),
+      name: nameNode.text,
+      kind: "class",
+      signature: classSignature(file.content, defNode),
+      startLine: lines[0],
+      endLine: lines[1],
+      codeSnippet: file.content.slice(defNode.startIndex, defNode.endIndex),
+      calls: [],
+      imports: [],
+      qualifiedName: nameNode.text,
+    });
   }
 
-  const hasErrors = root.hasError;
+  // Precompute line start offsets (once per file)
+  const lineOffsets: number[] = [0];
+  for (let i = 0; i < file.content.length; i++) {
+    if (file.content[i] === "\n") lineOffsets.push(i + 1);
+  }
+
+  // Assign calls to each symbol based on its source range
+  for (const fn of functions) {
+    const start = lineOffsets[Math.min(fn.startLine - 1, lineOffsets.length - 1)];
+    const end =
+      fn.endLine < lineOffsets.length
+        ? lineOffsets[fn.endLine] - 1
+        : file.content.length;
+    fn.calls = callSites
+      .filter((cs) => cs.startIndex >= start && cs.endIndex <= end)
+      .map((cs) => cs.name);
+  }
+
+  const hasErrors = root.hasError();
 
   return {
     parsed: {
@@ -508,4 +558,274 @@ async function parseSingleFile(
   };
 }
 
-// ~~~ DEPENDENCY GRAPH ~~~
+/* ── Cross-file dependency graph ───────────────────────────────────── */
+
+const CANDIDATE_EXTS = [
+  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
+  ".py", ".java", ".go", ".c", ".h", ".cpp", ".cc", ".hpp", ".cxx",
+];
+
+function tryPath(
+  p: string,
+  byPath: Map<string, ParsedFile>,
+  files: ParsedFile[],
+): string | null {
+  // Exact match
+  if (byPath.has(p)) return p;
+  // Try extensions
+  for (const ext of CANDIDATE_EXTS) {
+    if (byPath.has(p + ext)) return p + ext;
+  }
+  // Index files
+  if (byPath.has(p + "/index.ts")) return p + "/index.ts";
+  if (byPath.has(p + "/index.js")) return p + "/index.js";
+  if (byPath.has(p + "/index.tsx")) return p + "/index.tsx";
+  if (byPath.has(p + "/index.jsx")) return p + "/index.jsx";
+  // Basename fallback — match last path segment against any file
+  const leaf = p.split("/").pop() ?? p;
+  for (const f of files) {
+    if (f.path.endsWith("/" + leaf) || f.path === leaf) return f.path;
+  }
+  return null;
+}
+
+function resolveImport(
+  fromFile: string,
+  spec: string,
+  byPath: Map<string, ParsedFile>,
+  files: ParsedFile[],
+): string | null {
+  const clean = spec.split("?")[0].split("#")[0];
+  if (!clean) return null;
+
+  if (clean.startsWith(".")) {
+    // Relative
+    const base = fromFile.lastIndexOf("/");
+    const dir = base === -1 ? "" : fromFile.slice(0, base);
+    const joined = (dir ? dir + "/" : "") + clean;
+    const parts: string[] = [];
+    for (const seg of joined.split("/")) {
+      if (seg === "." || seg === "") continue;
+      if (seg === "..") parts.pop();
+      else parts.push(seg);
+    }
+    return tryPath(parts.join("/"), byPath, files);
+  }
+
+  if (clean.startsWith("/")) {
+    return tryPath(clean.slice(1), byPath, files);
+  }
+
+  // Bare specifier (e.g. "utils/helpers") — try path as-is
+  return tryPath(clean, byPath, files);
+}
+
+function buildDependencyGraph(files: ParsedFile[]): ParsedDependency[] {
+  const edges: ParsedDependency[] = [];
+  const seen = new Set<string>();
+  const byPath = new Map(files.map((f) => [f.path, f]));
+
+  // Index: function qualified name → location(s)
+  const fnIndex = new Map<
+    string,
+    { file: ParsedFile; fn: ExtractedFunction }[]
+  >();
+  // Index: class name → file path(s)
+  const classIndex = new Map<string, string[]>();
+  for (const f of files) {
+    for (const fn of f.functions) {
+      if (fn.kind === "class") continue;
+      const key = fn.qualifiedName ?? fn.name;
+      const arr = fnIndex.get(key) ?? [];
+      arr.push({ file: f, fn });
+      fnIndex.set(key, arr);
+    }
+    for (const c of f.classHierarchy) {
+      const arr = classIndex.get(c.name) ?? [];
+      arr.push(f.path);
+      classIndex.set(c.name, arr);
+    }
+  }
+
+  const add = (e: ParsedDependency) => {
+    const k = [e.type, e.sourceFile, e.targetFile, e.sourceFunction, e.targetFunction]
+      .join("|");
+    if (!seen.has(k)) {
+      seen.add(k);
+      edges.push(e);
+    }
+  };
+
+  // ── Imports (file → file)
+  for (const f of files) {
+    for (const spec of f.imports) {
+      const target = resolveImport(f.path, spec, byPath, files);
+      if (target) add({ type: "imports", sourceFile: f.path, targetFile: target });
+    }
+  }
+
+  // ── Inheritance (class → class)
+  for (const f of files) {
+    for (const c of f.classHierarchy) {
+      for (const sup of c.extends) {
+        const refs = classIndex.get(sup);
+        if (refs?.length)
+          add({
+            type: "extends",
+            sourceFile: f.path,
+            sourceFunction: c.name,
+            targetFile: refs[0],
+            targetFunction: sup,
+          });
+      }
+      for (const sup of c.implements) {
+        const refs = classIndex.get(sup);
+        if (refs?.length)
+          add({
+            type: "implements",
+            sourceFile: f.path,
+            sourceFunction: c.name,
+            targetFile: refs[0],
+            targetFunction: sup,
+          });
+      }
+    }
+  }
+
+  // ── Calls (function → function)
+  for (const f of files) {
+    for (const fn of f.functions) {
+      if (fn.kind === "class") continue;
+      for (const callName of fn.calls) {
+        const sf = fn.qualifiedName ?? fn.name;
+
+        // Same-file match first
+        const local = f.functions.find(
+          (x) =>
+            x.kind !== "class" &&
+            x.id !== fn.id &&
+            (x.name === callName || x.qualifiedName === callName),
+        );
+        if (local) {
+          add({
+            type: "calls",
+            sourceFile: f.path,
+            sourceFunction: sf,
+            targetFile: f.path,
+            targetFunction: local.qualifiedName ?? local.name,
+          });
+          continue;
+        }
+
+        // Cross-file match (take first)
+        const refs = fnIndex.get(callName);
+        if (!refs?.length) continue;
+        const match = refs.find((r) => r.file.path !== f.path);
+        if (match)
+          add({
+            type: "calls",
+            sourceFile: f.path,
+            sourceFunction: sf,
+            targetFile: match.file.path,
+            targetFunction: match.fn.qualifiedName ?? match.fn.name,
+          });
+      }
+    }
+  }
+
+  return edges;
+}
+
+/* ── Project-level orchestrator ───────────────────────────────────── */
+
+export async function parseProject(
+  files: AnalysisFile[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<ParsedProject> {
+  const supported: AnalysisFile[] = [];
+  const unsupported: string[] = [];
+
+  for (const f of files) {
+    const lang = detectLanguage(f.path);
+    if (LANGUAGE_QUERIES[lang]) supported.push(f);
+    else unsupported.push(f.path);
+  }
+
+  const parsedFiles: ParsedFile[] = [];
+  const unparseableFiles: string[] = [];
+
+  for (let i = 0; i < supported.length; i++) {
+    try {
+      const { parsed, errors } = await parseSingleFile(supported[i]);
+      parsedFiles.push(parsed);
+      if (errors) unparseableFiles.push(supported[i].path);
+    } catch {
+      unparseableFiles.push(supported[i].path);
+    }
+    onProgress?.(i + 1, supported.length);
+  }
+
+  const dependencies = buildDependencyGraph(parsedFiles);
+
+  return {
+    files: parsedFiles,
+    dependencies,
+    unsupportedFiles: unsupported,
+    unparseableFiles,
+  };
+}
+
+/* ── React hook ────────────────────────────────────────────────────── */
+
+export interface UseParserResult {
+  status: "idle" | "parsing" | "done" | "error";
+  project: ParsedProject | null;
+  error: string | null;
+  progress: { parsed: number; total: number };
+  run: (files: AnalysisFile[]) => void;
+  reset: () => void;
+}
+
+export function useParser(): UseParserResult {
+  const [status, setStatus] = useState<"idle" | "parsing" | "done" | "error">("idle");
+  const [project, setProject] = useState<ParsedProject | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ parsed: number; total: number }>({
+    parsed: 0,
+    total: 0,
+  });
+  const parseIdRef = useRef(0);
+
+  const reset = useCallback(() => {
+    parseIdRef.current += 1;
+    setStatus("idle");
+    setProject(null);
+    setError(null);
+    setProgress({ parsed: 0, total: 0 });
+  }, []);
+
+  const run = useCallback(
+    async (files: AnalysisFile[]) => {
+      const myId = ++parseIdRef.current;
+      setStatus("parsing");
+      setError(null);
+      setProject(null);
+      setProgress({ parsed: 0, total: files.length });
+      try {
+        const result = await parseProject(files, (parsed, total) => {
+          if (parseIdRef.current === myId) setProgress({ parsed, total });
+        });
+        if (parseIdRef.current !== myId) return;
+        setProject(result);
+        setStatus("done");
+      } catch (e: unknown) {
+        if (parseIdRef.current !== myId) return;
+        setError(e instanceof Error ? e.message : "Parsing failed unexpectedly.");
+        setStatus("error");
+      }
+    },
+    [],
+  );
+
+  return { status, project, error, progress, run, reset };
+}
