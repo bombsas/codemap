@@ -1,7 +1,7 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { SiGithub } from "react-icons/si";
-import { Upload, FileCode, Terminal, ArrowLeft } from "lucide-react";
+import { Upload, FileCode, Terminal, ArrowLeft, Save } from "lucide-react";
 import PageLayout from "../components/layout/PageLayout";
 import GitHubForm from "../components/analysis/GitHubForm";
 import ZipUpload from "../components/analysis/ZipUpload";
@@ -9,6 +9,7 @@ import PasteFiles from "../components/analysis/PasteFiles";
 import ProgressStepper from "../components/analysis/ProgressStepper";
 import { useParser } from "../hooks/useParser";
 import { useExplanation } from "../hooks/useExplanation";
+import { saveAnalysis } from "../hooks/useSaveAnalysis";
 import type { AnalysisFile } from "../types/analysis";
 import { detectLanguage } from "../lib/languages";
 
@@ -56,6 +57,9 @@ export default function NewAnalysisPage() {
     null,
   );
   const [pipelineStep, setPipelineStep] = useState<PipelineStep>("idle");
+  const [saveProgress, setSaveProgress] = useState<string>("");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const savedProjectIdRef = useRef<string | null>(null);
 
   const parser = useParser();
   const explainer = useExplanation();
@@ -100,30 +104,51 @@ export default function NewAnalysisPage() {
     }
   }, [parser.status, parser.project, pipelineStep, explainer]);
 
-  // When explainer finishes → move to building step, then navigate to the
-  // visualization workspace with the parsed project + explanations in state.
+  // When explainer finishes → move to building step, save to Supabase,
+  // then navigate to the real project-based URL.
   useEffect(() => {
     if (pipelineStep !== "explaining") return;
     if (explainer.status === "done") {
       setPipelineStep("building");
-      const t = setTimeout(() => {
-        setPipelineStep("complete");
-        if (parser.project) {
-          const project = parser.project; // capture for closure
-          const explanations = Object.fromEntries(explainer.explanations);
-          navigate(`/analysis/${Date.now()}`, {
-            state: {
-              project,
-              explanations,
-              failedIds: explainer.failedIds,
-              name: collectedFiles?.[0]?.path
-                ? `${collectedFiles.length} files`
-                : "Analysis",
-            },
-          });
+      setSaveProgress("");
+      setSaveError(null);
+
+      if (!parser.project || !collectedFiles) return;
+
+      const doSave = async () => {
+        const project = parser.project!;
+        const files = collectedFiles!;
+        const name =
+          files[0]?.path
+            ? `${files.length} file${files.length !== 1 ? "s" : ""}`
+            : "Analysis";
+
+        const result = await saveAnalysis(
+          {
+            files,
+            project,
+            explanations: explainer.explanations,
+            failedIds: explainer.failedIds,
+            name,
+            sourceType: method,
+          },
+          (step) => {
+            setSaveProgress(step.replace("saving-", ""));
+          },
+        );
+
+        if (result.saved && result.projectId) {
+          savedProjectIdRef.current = result.projectId;
+          setPipelineStep("complete");
+        } else {
+          setSaveError(result.error ?? "Failed to save analysis.");
+          // Still allow navigation — data lives in memory for this session
+          savedProjectIdRef.current = null;
+          setPipelineStep("complete");
         }
-      }, 600);
-      return () => clearTimeout(t);
+      };
+
+      doSave();
     }
     if (explainer.status === "error") {
       setPipelineStep("error");
@@ -136,7 +161,30 @@ export default function NewAnalysisPage() {
     pipelineStep,
     navigate,
     collectedFiles,
+    method,
   ]);
+
+  /* ── Navigate to the saved analysis view ──────────────────────────── */
+
+  const handleViewAnalysis = useCallback(() => {
+    const projectId = savedProjectIdRef.current;
+    if (projectId) {
+      navigate(`/analysis/${projectId}`);
+    } else if (parser.project) {
+      // Fallback: navigate with in-memory state (save failed)
+      const explanations = Object.fromEntries(explainer.explanations);
+      navigate(`/analysis/session-${Date.now()}`, {
+        state: {
+          project: parser.project,
+          explanations,
+          failedIds: explainer.failedIds,
+          name: collectedFiles?.[0]?.path
+            ? `${collectedFiles.length} files`
+            : "Analysis",
+        },
+      });
+    }
+  }, [navigate, parser.project, explainer.explanations, explainer.failedIds, collectedFiles]);
 
   /* ── Navigate back / reset ───────────────────────────────────────── */
 
@@ -272,9 +320,23 @@ export default function NewAnalysisPage() {
                 </p>
               )}
               {pipelineStep === "building" && (
-                <p className="text-xs text-muted text-center mt-4">
-                  Building visualization...
-                </p>
+                <div className="mt-4 text-center">
+                  <p className="text-xs text-muted">
+                    {saveProgress
+                      ? `Saving: ${saveProgress}…`
+                      : "Saving analysis…"}
+                  </p>
+                  <div className="mt-2 flex justify-center">
+                    <div className="h-1 w-48 rounded-full bg-border overflow-hidden">
+                      <div className="h-full w-1/2 rounded-full bg-accent animate-pulse" />
+                    </div>
+                  </div>
+                  {saveError && (
+                    <p className="text-xs text-amber-400 mt-2">
+                      Save issue: {saveError} (analysis still available this session)
+                    </p>
+                  )}
+                </div>
               )}
 
               {/* Error state */}
@@ -306,9 +368,18 @@ export default function NewAnalysisPage() {
                     {explainer.explanations.size} function
                     {explainer.explanations.size !== 1 ? "s" : ""} explained
                   </p>
-                  <p className="text-xs text-muted">
-                    Explanations are ready for the visualization view.
+                  <p className="text-xs text-muted mb-4">
+                    {saveError
+                      ? "Analysis completed but couldn't be saved to your account."
+                      : "Analysis saved to your account."}
                   </p>
+                  <button
+                    onClick={handleViewAnalysis}
+                    className="inline-flex items-center gap-2 bg-accent text-background rounded-lg px-5 py-2.5 text-sm font-semibold transition-all duration-150 hover:opacity-90 active:scale-[0.97] cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    View Analysis
+                  </button>
                 </div>
               )}
 
