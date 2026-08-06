@@ -1,14 +1,16 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { SiGithub } from "react-icons/si";
+import { Upload, FileCode, Terminal, ArrowLeft } from "lucide-react";
 import PageLayout from "../components/layout/PageLayout";
 import GitHubForm from "../components/analysis/GitHubForm";
 import ZipUpload from "../components/analysis/ZipUpload";
 import PasteFiles from "../components/analysis/PasteFiles";
 import ProgressStepper from "../components/analysis/ProgressStepper";
+import { useParser } from "../hooks/useParser";
+import { useExplanation } from "../hooks/useExplanation";
 import type { AnalysisFile } from "../types/analysis";
 import { detectLanguage } from "../lib/languages";
-import { SiGithub } from "react-icons/si";
-import { Upload, FileCode, Terminal, ArrowLeft } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 
 type InputMethod = "github" | "zip" | "paste";
 
@@ -38,57 +40,88 @@ const METHODS: {
   },
 ];
 
+type PipelineStep =
+  | "idle"
+  | "parsing"
+  | "analyzing"
+  | "explaining"
+  | "building"
+  | "complete"
+  | "error";
+
 export default function NewAnalysisPage() {
   const navigate = useNavigate();
   const [method, setMethod] = useState<InputMethod>("github");
   const [collectedFiles, setCollectedFiles] = useState<AnalysisFile[] | null>(
     null,
   );
-  const [pipelineStep, setPipelineStep] = useState<
-    "idle" | "parsing" | "analyzing" | "explaining" | "building" | "complete" | "error"
-  >("idle");
+  const [pipelineStep, setPipelineStep] = useState<PipelineStep>("idle");
+
+  const parser = useParser();
+  const explainer = useExplanation();
+
+  /* ── Start pipeline when files are ready ─────────────────────────── */
 
   const handleFilesReady = useCallback(
     (files: Array<{ path: string; content: string }>) => {
-      // Normalize to AnalysisFile[] with language detection
       const analysisFiles: AnalysisFile[] = files
         .filter((f) => f.path && f.content)
         .map((f) => ({
           path: f.path,
           content: f.content,
+          language: detectLanguage(f.path),
         }));
 
       setCollectedFiles(analysisFiles);
-
-      // Kick off pipeline (stub — will be wired to Tasks 5-8)
       setPipelineStep("parsing");
-      console.log(
-        `[Pipeline] Collected ${analysisFiles.length} files, starting analysis...`,
-      );
-
-      // Stub: simulate pipeline progression for UI demo
-      const steps: ("parsing" | "analyzing" | "explaining" | "building" | "complete")[] = [
-        "parsing",
-        "analyzing",
-        "explaining",
-        "building",
-        "complete",
-      ];
-      let i = 0;
-      const interval = setInterval(() => {
-        i++;
-        if (i < steps.length) {
-          setPipelineStep(steps[i]);
-        } else {
-          clearInterval(interval);
-        }
-      }, 2000);
+      parser.run(analysisFiles);
     },
-    [],
+    [parser],
   );
 
+  /* ── Chain: parsing → analyzing → explaining ─────────────────────── */
+
+  // When parser finishes → move to explaining step
+  useEffect(() => {
+    if (pipelineStep !== "parsing") return;
+    if (parser.status === "done" && parser.project) {
+      const project = parser.project; // capture for closure
+      // Short delay to show "Analyzing" (building dependency graph happens
+      // inside parseProject and is fast for most projects)
+      setPipelineStep("analyzing");
+      const t = setTimeout(() => {
+        setPipelineStep("explaining");
+        explainer.run(project);
+      }, 600);
+      return () => clearTimeout(t);
+    }
+    if (parser.status === "error") {
+      setPipelineStep("error");
+    }
+  }, [parser.status, parser.project, pipelineStep, explainer]);
+
+  // When explainer finishes → move to building step (stub for now)
+  useEffect(() => {
+    if (pipelineStep !== "explaining") return;
+    if (explainer.status === "done") {
+      setPipelineStep("building");
+      // Stub: simulate visualization build
+      const t = setTimeout(() => {
+        setPipelineStep("complete");
+      }, 800);
+      return () => clearTimeout(t);
+    }
+    if (explainer.status === "error") {
+      setPipelineStep("error");
+    }
+  }, [explainer.status, pipelineStep]);
+
+  /* ── Navigate back / reset ───────────────────────────────────────── */
+
   const handleBack = () => {
-    if (collectedFiles) {
+    if (collectedFiles && pipelineStep !== "complete") {
+      parser.reset();
+      explainer.reset();
       setCollectedFiles(null);
       setPipelineStep("idle");
     } else {
@@ -100,21 +133,37 @@ export default function NewAnalysisPage() {
     ? collectedFiles.filter((f) => detectLanguage(f.path) === "unsupported")
     : [];
 
+  /* ── Derived progress values ─────────────────────────────────────── */
+
+  const parseProgress = parser.progress;
+  const explainProgress = explainer.progress;
+  const totalFunctions = explainProgress.totalFunctions;
+
   return (
     <PageLayout>
       <div className="max-w-2xl mx-auto">
         {/* Back button */}
         <button
           onClick={handleBack}
-          className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-foreground transition-colors duration-150 mb-6"
+          className={`
+            inline-flex items-center gap-1.5 text-xs
+            transition-colors duration-150 mb-6 cursor-pointer
+            ${
+              pipelineStep === "complete"
+                ? "text-accent hover:text-accent/80"
+                : "text-muted hover:text-foreground"
+            }
+          `}
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          {collectedFiles ? "Back to import" : "Back to dashboard"}
+          {collectedFiles && pipelineStep !== "complete"
+            ? "Back to import"
+            : "Back to dashboard"}
         </button>
 
         {!collectedFiles ? (
           <>
-            {/* Header */}
+            {/* ── Input selection ─────────────────────────────────────── */}
             <div className="mb-8">
               <div className="w-12 h-12 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center mb-4">
                 <Terminal className="w-6 h-6 text-accent" />
@@ -128,7 +177,6 @@ export default function NewAnalysisPage() {
               </p>
             </div>
 
-            {/* Method tabs */}
             <div className="flex gap-2 mb-6">
               {METHODS.map((m) => (
                 <button
@@ -153,32 +201,113 @@ export default function NewAnalysisPage() {
               ))}
             </div>
 
-            {/* Form panels */}
             <div className="bg-surface border border-border rounded-lg p-5">
-              {method === "github" && <GitHubForm onFilesReady={handleFilesReady} />}
-              {method === "zip" && <ZipUpload onFilesReady={handleFilesReady} />}
+              {method === "github" && (
+                <GitHubForm onFilesReady={handleFilesReady} />
+              )}
+              {method === "zip" && (
+                <ZipUpload onFilesReady={handleFilesReady} />
+              )}
               {method === "paste" && (
                 <PasteFiles onFilesReady={handleFilesReady} />
               )}
             </div>
           </>
         ) : (
-          /* Pipeline progress view */
+          /* ── Pipeline progress view ────────────────────────────────── */
           <div className="space-y-6">
             <div>
               <h2 className="font-heading text-xl text-foreground tracking-wide mb-2">
-                Analyzing Codebase
+                {pipelineStep === "complete"
+                  ? "Analysis Complete"
+                  : "Analyzing Codebase"}
               </h2>
               <p className="text-sm text-muted">
                 {collectedFiles.length} file
                 {collectedFiles.length !== 1 ? "s" : ""} collected
                 {unsupportedFiles.length > 0 &&
                   ` · ${unsupportedFiles.length} unsupported`}
+                {totalFunctions > 0 && ` · ${totalFunctions} functions`}
               </p>
             </div>
 
+            {/* Stepper */}
             <div className="bg-surface border border-border rounded-lg p-6">
               <ProgressStepper currentStep={pipelineStep} />
+
+              {/* Live progress details */}
+              {pipelineStep === "parsing" && parseProgress.total > 0 && (
+                <p className="text-xs text-muted text-center mt-4">
+                  Parsed {parseProgress.parsed} of {parseProgress.total} files
+                </p>
+              )}
+              {pipelineStep === "explaining" && totalFunctions > 0 && (
+                <p className="text-xs text-muted text-center mt-4">
+                  Explaining {explainProgress.explained} of {totalFunctions}{" "}
+                  functions
+                  {explainer.failedIds.length > 0 &&
+                    ` · ${explainer.failedIds.length} failed`}
+                </p>
+              )}
+              {pipelineStep === "building" && (
+                <p className="text-xs text-muted text-center mt-4">
+                  Building visualization...
+                </p>
+              )}
+
+              {/* Error state */}
+              {pipelineStep === "error" && (
+                <div className="mt-4 text-center">
+                  <p className="text-xs text-destructive mb-3">
+                    {parser.error ||
+                      explainer.error ||
+                      "Analysis encountered an error. Please try again."}
+                  </p>
+                  <button
+                    onClick={() => {
+                      parser.reset();
+                      explainer.reset();
+                      setCollectedFiles(null);
+                      setPipelineStep("idle");
+                    }}
+                    className="text-xs text-accent hover:text-accent/80 transition-colors cursor-pointer"
+                  >
+                    Start over
+                  </button>
+                </div>
+              )}
+
+              {/* Success summary */}
+              {pipelineStep === "complete" && (
+                <div className="mt-5 pt-5 border-t border-border text-center">
+                  <p className="text-sm text-foreground font-heading tracking-wide mb-1">
+                    {explainer.explanations.size} function
+                    {explainer.explanations.size !== 1 ? "s" : ""} explained
+                  </p>
+                  <p className="text-xs text-muted">
+                    Explanations are ready for the visualization view.
+                  </p>
+                </div>
+              )}
+
+              {/* Partial failure warning */}
+              {pipelineStep === "complete" && explainer.failedIds.length > 0 && (
+                <p className="text-xs text-amber-400 text-center mt-4">
+                  {explainer.failedIds.length} function
+                  {explainer.failedIds.length !== 1 ? "s" : ""} could not be
+                  explained —{" "}
+                  <button
+                    onClick={() => {
+                      setPipelineStep("explaining");
+                      explainer.retry();
+                    }}
+                    className="underline cursor-pointer"
+                  >
+                    retry
+                  </button>{" "}
+                  now.
+                </p>
+              )}
             </div>
 
             {/* File summary */}
