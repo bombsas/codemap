@@ -44,28 +44,38 @@ CodeMap is a web application that helps developers understand large and unfamili
 - OpenAI API key (for AI explanations)
 - (Optional) GitHub personal access token (for private repo imports)
 
-### Installation
+### 1. Clone & Install
 
 ```bash
+git clone <repo-url>
+cd codemap
 npm install
 ```
 
-### Environment / Secrets
+### 2. Supabase Auth — Add Local Redirect URL
 
-CodeMap uses **Supabase Edge Function secrets** — never `.env` files. Configure these in the [Supabase dashboard](https://supabase.com/dashboard/project/_/settings/functions):
+The app connects to the hosted Supabase project (`rqvfqtyuqfjarluydskr`) — credentials are already in the source code. For auth redirects to work on `localhost`, add this URL in the Supabase dashboard:
+
+1. Go to **Supabase Dashboard → [Authentication > URL Configuration](https://supabase.com/dashboard/project/rqvfqtyuqfjarluydskr/auth/url-configuration)**
+2. Under **Redirect URLs**, add: **`http://localhost:5173/**`**
+3. Click **Save**
+
+### 3. Edge Function Secrets
+
+CodeMap uses **Supabase Edge Function secrets** (not `.env` files). Configure these in the [Supabase Edge Function settings](https://supabase.com/dashboard/project/rqvfqtyuqfjarluydskr/settings/functions):
 
 | Secret | Required | Purpose |
 |--------|----------|---------|
 | `OPENAI_API_KEY` | ✅ Yes | AI-powered code explanations |
 | `GITHUB_TOKEN` | ❌ Optional | Access private GitHub repositories |
 
-### Local Development
+### 4. Run Locally
 
 ```bash
 npm run dev
 ```
 
-This starts the Vite dev server (typically at `http://localhost:5173`).
+This starts the Vite dev server at **`http://localhost:5173`**.
 
 ### Build for Production
 
