@@ -568,7 +568,7 @@ const CANDIDATE_EXTS = [
 function tryPath(
   p: string,
   byPath: Map<string, ParsedFile>,
-  files: ParsedFile[],
+  leafIndex: Map<string, string>,
 ): string | null {
   // Exact match
   if (byPath.has(p)) return p;
@@ -581,19 +581,16 @@ function tryPath(
   if (byPath.has(p + "/index.js")) return p + "/index.js";
   if (byPath.has(p + "/index.tsx")) return p + "/index.tsx";
   if (byPath.has(p + "/index.jsx")) return p + "/index.jsx";
-  // Basename fallback — match last path segment against any file
+  // Basename fallback — O(1) lookup via pre-built leaf index
   const leaf = p.split("/").pop() ?? p;
-  for (const f of files) {
-    if (f.path.endsWith("/" + leaf) || f.path === leaf) return f.path;
-  }
-  return null;
+  return leafIndex.get(leaf) ?? null;
 }
 
 function resolveImport(
   fromFile: string,
   spec: string,
   byPath: Map<string, ParsedFile>,
-  files: ParsedFile[],
+  leafIndex: Map<string, string>,
 ): string | null {
   const clean = spec.split("?")[0].split("#")[0];
   if (!clean) return null;
@@ -609,21 +606,38 @@ function resolveImport(
       if (seg === "..") parts.pop();
       else parts.push(seg);
     }
-    return tryPath(parts.join("/"), byPath, files);
+    return tryPath(parts.join("/"), byPath, leafIndex);
   }
 
   if (clean.startsWith("/")) {
-    return tryPath(clean.slice(1), byPath, files);
+    return tryPath(clean.slice(1), byPath, leafIndex);
   }
 
   // Bare specifier (e.g. "utils/helpers") — try path as-is
-  return tryPath(clean, byPath, files);
+  return tryPath(clean, byPath, leafIndex);
 }
 
-function buildDependencyGraph(files: ParsedFile[]): ParsedDependency[] {
+/* ── Async yielding helper ─────────────────────────────── */
+
+const YIELD_INTERVAL = 30; // yield to event loop after every N files
+
+function runIdle(): Promise<void> {
+  return new Promise((r) => setTimeout(r, 0));
+}
+
+/* ── Cross-file dependency graph ───────────────────────────────────── */
+
+async function buildDependencyGraph(files: ParsedFile[]): Promise<ParsedDependency[]> {
   const edges: ParsedDependency[] = [];
   const seen = new Set<string>();
   const byPath = new Map(files.map((f) => [f.path, f]));
+
+  // ── Leaf filename index (O(1) basename fallback for imports) ────
+  const leafIndex = new Map<string, string>();
+  for (const f of files) {
+    const leaf = f.path.split("/").pop() ?? f.path;
+    if (!leafIndex.has(leaf)) leafIndex.set(leaf, f.path);
+  }
 
   // Index: function qualified name → location(s)
   const fnIndex = new Map<
@@ -632,9 +646,17 @@ function buildDependencyGraph(files: ParsedFile[]): ParsedDependency[] {
   >();
   // Index: class name → file path(s)
   const classIndex = new Map<string, string[]>();
+  // Per-file local name → function index (replaces linear scan)
+  const fileFnIndex = new Map<string, Map<string, ExtractedFunction>>();
   for (const f of files) {
+    const localMap = new Map<string, ExtractedFunction>();
     for (const fn of f.functions) {
       if (fn.kind === "class") continue;
+      // Index by both plain name and qualified name
+      if (!localMap.has(fn.name)) localMap.set(fn.name, fn);
+      if (fn.qualifiedName && fn.qualifiedName !== fn.name && !localMap.has(fn.qualifiedName)) {
+        localMap.set(fn.qualifiedName, fn);
+      }
       const key = fn.qualifiedName ?? fn.name;
       const arr = fnIndex.get(key) ?? [];
       arr.push({ file: f, fn });
@@ -645,6 +667,7 @@ function buildDependencyGraph(files: ParsedFile[]): ParsedDependency[] {
       arr.push(f.path);
       classIndex.set(c.name, arr);
     }
+    fileFnIndex.set(f.path, localMap);
   }
 
   const add = (e: ParsedDependency) => {
@@ -659,7 +682,7 @@ function buildDependencyGraph(files: ParsedFile[]): ParsedDependency[] {
   // ── Imports (file → file)
   for (const f of files) {
     for (const spec of f.imports) {
-      const target = resolveImport(f.path, spec, byPath, files);
+      const target = resolveImport(f.path, spec, byPath, leafIndex);
       if (target) add({ type: "imports", sourceFile: f.path, targetFile: target });
     }
   }
@@ -693,20 +716,17 @@ function buildDependencyGraph(files: ParsedFile[]): ParsedDependency[] {
   }
 
   // ── Calls (function → function)
-  for (const f of files) {
+  for (let fi = 0; fi < files.length; fi++) {
+    const f = files[fi];
+    const localMap = fileFnIndex.get(f.path)!;
     for (const fn of f.functions) {
       if (fn.kind === "class") continue;
       for (const callName of fn.calls) {
         const sf = fn.qualifiedName ?? fn.name;
 
-        // Same-file match first
-        const local = f.functions.find(
-          (x) =>
-            x.kind !== "class" &&
-            x.id !== fn.id &&
-            (x.name === callName || x.qualifiedName === callName),
-        );
-        if (local) {
+        // Same-file match — O(1) via name index
+        const local = localMap.get(callName);
+        if (local && local.id !== fn.id) {
           add({
             type: "calls",
             sourceFile: f.path,
@@ -731,6 +751,9 @@ function buildDependencyGraph(files: ParsedFile[]): ParsedDependency[] {
           });
       }
     }
+
+    // Yield periodically so the UI stays responsive
+    if (fi > 0 && fi % YIELD_INTERVAL === 0) await runIdle();
   }
 
   return edges;
@@ -765,7 +788,7 @@ export async function parseProject(
     onProgress?.(i + 1, supported.length, supported[i].path);
   }
 
-  const dependencies = buildDependencyGraph(parsedFiles);
+  const dependencies = await buildDependencyGraph(parsedFiles);
 
   return {
     files: parsedFiles,
