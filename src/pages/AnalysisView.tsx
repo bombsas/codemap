@@ -210,7 +210,7 @@ export default function AnalysisView() {
 
   return (
     <PageLayout fullHeight>
-      <div className="flex h-full flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         {/* Top bar */}
         <div className="flex items-center justify-between border-b border-border/60 bg-surface/60 px-4 py-2">
           <div className="flex min-w-0 items-center gap-3">

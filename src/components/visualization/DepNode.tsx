@@ -33,7 +33,7 @@ function DepNodeComponent({ data: rawData, selected }: NodeProps) {
 
   return (
     <div
-      className={`flex h-full w-full cursor-pointer flex-col justify-between rounded-lg border bg-surface px-3 py-2 transition-all duration-150 hover:border-accent/50 active:scale-[0.98] ${
+      className={`flex h-full w-full cursor-pointer flex-col justify-between rounded-lg border bg-surface px-3.5 py-2.5 transition-all duration-150 hover:border-accent/50 active:scale-[0.98] ${
         selected
           ? "border-accent/70 shadow-[0_0_0_1px_var(--color-accent)]"
           : "border-border"
@@ -52,7 +52,7 @@ function DepNodeComponent({ data: rawData, selected }: NodeProps) {
         <span className="flex min-w-0 items-center gap-1.5">
           {isFunctionNode ? (
             <span
-              className={`shrink-0 rounded px-1 py-0.5 text-[8px] uppercase tracking-wide ${
+              className={`shrink-0 rounded px-1 py-0.5 text-[9px] uppercase tracking-wide ${
                 data.kind === "class"
                   ? "bg-purple-500/15 text-purple-300"
                   : data.kind === "method"
@@ -63,24 +63,24 @@ function DepNodeComponent({ data: rawData, selected }: NodeProps) {
               {data.kind}
             </span>
           ) : (
-            <FileCode2 size={13} className="shrink-0 text-accent" />
+            <FileCode2 size={14} className="shrink-0 text-accent" />
           )}
           {langColor && !isFunctionNode && (
-            <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] uppercase tracking-wide ${langColor}`}>
+            <span className={`shrink-0 rounded px-1 py-0.5 text-[10px] uppercase tracking-wide ${langColor}`}>
               {data.language}
             </span>
           )}
         </span>
         {langColor && isFunctionNode && (
-          <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] uppercase tracking-wide ${langColor}`}>
+          <span className={`shrink-0 rounded px-1 py-0.5 text-[10px] uppercase tracking-wide ${langColor}`}>
             {data.language}
           </span>
         )}
       </div>
-      <div className="truncate font-heading text-[11px] text-foreground">
+      <div className="truncate font-heading text-xs text-foreground">
         {data.label}
       </div>
-      <div className="truncate text-[9px] text-muted" title={data.filePath}>
+      <div className="truncate text-[10px] text-muted" title={data.filePath}>
         {isFunctionNode ? data.filePath : `${data.functionCount ?? 0} function${(data.functionCount ?? 0) === 1 ? "" : "s"}`}
       </div>
       <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />

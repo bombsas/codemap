@@ -63,7 +63,7 @@ function BlockNodeComponent({ data: rawData, selected }: NodeProps) {
       : "bg-muted text-foreground";
     return (
       <div
-        className={`rounded-lg border px-3 py-2 transition-colors duration-200 ${
+        className={`rounded-lg border px-3.5 py-2.5 transition-colors duration-200 ${
           selected
             ? "border-accent/60 bg-muted/60"
             : "border-border bg-muted/40 hover:border-accent/40"
@@ -71,7 +71,7 @@ function BlockNodeComponent({ data: rawData, selected }: NodeProps) {
         onClick={() => data.filePath && openPanel(`file:${data.filePath}`)}
       >
         <div className="flex items-center justify-between gap-2">
-          <span className="font-heading text-xs text-foreground truncate">
+          <span className="font-heading text-[13px] text-foreground truncate">
             {data.filePath}
           </span>
           <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${langColor}`}>

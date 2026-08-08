@@ -15,7 +15,7 @@ export default function PageLayout({
 }: PageLayoutProps) {
   if (fullHeight) {
     return (
-      <div className="flex h-screen flex-col bg-background overflow-hidden">
+      <div className="flex h-dvh flex-col bg-background overflow-hidden">
         <Header userEmail={userEmail} />
         <main className="flex min-h-0 flex-1">{children}</main>
       </div>

@@ -227,6 +227,7 @@ function GraphCanvasComponent({ project, explanations }: GraphCanvasProps) {
       {/* Canvas */}
       <div className="relative flex-1 overflow-hidden">
         <ReactFlow
+          key={`${viewMode}:${dependencyDetail}:${mindMapRootFile}:${baseNodes.length}`}
           nodes={nodes}
           edges={edges}
           onNodesChange={onNodesChange}
@@ -236,8 +237,9 @@ function GraphCanvasComponent({ project, explanations }: GraphCanvasProps) {
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           fitView
+          fitViewOptions={{ padding: 0.2, minZoom: 0.2 }}
           minZoom={0.1}
-          maxZoom={2.5}
+          maxZoom={3}
           proOptions={{ hideAttribution: true }}
           nodesDraggable={true}
           panOnScroll

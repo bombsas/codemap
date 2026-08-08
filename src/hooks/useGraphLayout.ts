@@ -26,19 +26,19 @@ export interface GraphNodesEdges {
 
 /* ── Sizing constants ────────────────────────────────────────────────── */
 
-const FUNC_CARD_W = 280;
+const FUNC_CARD_W = 320;
 const FUNC_CARD_H = 80;
 const FUNC_CARD_H_EXTRA = 200;
 const FILE_GROUP_PAD = 16;
-const FILE_GROUP_GAP = 40;
+const FILE_GROUP_GAP = 32;
 const FUNC_GAP = 12;
 const FILE_HEADER_H = 36;
-const DEP_NODE_W = 200;
-const DEP_NODE_H = 60;
-const DEP_FN_W = 190;
-const DEP_FN_H = 46;
-const MIND_NODE_W = 180;
-const MIND_NODE_H = 52;
+const DEP_NODE_W = 260;
+const DEP_NODE_H = 72;
+const DEP_FN_W = 240;
+const DEP_FN_H = 56;
+const MIND_NODE_W = 220;
+const MIND_NODE_H = 60;
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 
@@ -180,7 +180,7 @@ function buildDependencyLayout(
   activeEdgeTypes: EdgeTypeFilter[],
 ): GraphNodesEdges {
   const g = new dagre.graphlib.Graph({ multigraph: true });
-  g.setGraph({ rankdir: "LR", nodesep: 40, ranksep: 100 });
+  g.setGraph({ rankdir: "LR", nodesep: 32, ranksep: 90 });
   g.setDefaultEdgeLabel(() => ({}));
 
   const fileNodes = new Set(project.files.map((f) => f.path));
@@ -247,7 +247,7 @@ function buildFunctionDependencyLayout(
   activeEdgeTypes: EdgeTypeFilter[],
 ): GraphNodesEdges {
   const g = new dagre.graphlib.Graph({ multigraph: true });
-  g.setGraph({ rankdir: "LR", nodesep: 24, ranksep: 80 });
+  g.setGraph({ rankdir: "LR", nodesep: 20, ranksep: 60 });
   g.setDefaultEdgeLabel(() => ({}));
 
   // All symbols (functions, methods, classes) as nodes
@@ -392,8 +392,8 @@ async function buildMindMapLayout(
       id: "root",
       layoutOptions: {
         "elk.algorithm": "stress",
-        "elk.stress.desired-edge-length": "120",
-        "elk.spacing.nodeNode": "30",
+        "elk.stress.desired-edge-length": "100",
+        "elk.spacing.nodeNode": "20",
       },
       children: elkChildren,
       edges: elkEdges,

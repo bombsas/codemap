@@ -17,7 +17,7 @@ function MindMapNodeComponent({ data: rawData, selected }: NodeProps) {
 
   return (
     <div
-      className={`flex h-full w-full cursor-pointer flex-col justify-center rounded-md border px-2.5 py-1.5 bg-surface transition-all duration-150 hover:border-accent/50 active:scale-[0.98] ${
+      className={`flex h-full w-full cursor-pointer flex-col justify-center rounded-md border px-3 py-2 bg-surface transition-all duration-150 hover:border-accent/50 active:scale-[0.98] ${
         selected
           ? "border-accent/70 shadow-[0_0_0_1px_var(--color-accent)]"
           : "border-border"
@@ -32,10 +32,10 @@ function MindMapNodeComponent({ data: rawData, selected }: NodeProps) {
         }
       }}
     >
-      <span className="truncate font-heading text-[11px] text-foreground">
+      <span className="truncate font-heading text-xs text-foreground">
         {data.label}
       </span>
-      <span className="truncate text-[9px] text-muted">{data.filePath}</span>
+      <span className="truncate text-[10px] text-muted">{data.filePath}</span>
       <Handle type="target" position={Position.Top} style={{ opacity: 0 }} />
       <Handle type="source" position={Position.Bottom} style={{ opacity: 0 }} />
     </div>
