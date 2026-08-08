@@ -37,7 +37,7 @@ function SourceCodeViewComponent({
       style={{ maxHeight }}
     >
       {language && (
-        <div className="sticky top-0 z-10 border-b border-border/50 bg-background/80 px-3 py-1 text-[9px] uppercase tracking-wide text-muted backdrop-blur-sm">
+        <div className="sticky top-0 z-10 border-b border-border/50 bg-background/80 px-3 py-1 text-[9px] uppercase tracking-wide text-foreground/60 backdrop-blur-sm">
           {language}
         </div>
       )}
@@ -57,7 +57,7 @@ function SourceCodeViewComponent({
                 data-line={lineNum}
                 className={isHighlighted ? "bg-accent/10" : ""}
               >
-                <td className="select-none border-r border-border/30 px-3 text-right text-[10px] text-muted/50">
+                <td className="select-none border-r border-border/30 px-3 text-right text-[10px] text-foreground/40">
                   {lineNum}
                 </td>
                 <td className="px-3 text-foreground/90">

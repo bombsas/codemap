@@ -53,7 +53,7 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
 
     const SourceToggle = (
       <button
-        className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded border border-border/60 px-3 py-1.5 text-[10px] text-muted transition-colors duration-150 hover:border-accent/50 hover:text-foreground active:scale-[0.98]"
+        className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded border border-border/60 px-3 py-1.5 text-[10px] text-foreground/55 transition-colors duration-150 hover:border-accent/50 hover:text-foreground active:scale-[0.98]"
         onClick={() => setShowSource((v) => !v)}
         aria-expanded={showSource}
       >
@@ -71,7 +71,7 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
             {fn.qualifiedName ?? fn.name}
           </span>
           <button
-            className="cursor-pointer rounded p-1 text-muted transition-colors duration-150 hover:text-foreground active:scale-95"
+            className="cursor-pointer rounded p-1 text-foreground/55 transition-colors duration-150 hover:text-foreground active:scale-95"
             onClick={closePanel}
             aria-label="Close inspector"
           >
@@ -82,7 +82,7 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
         {/* Body */}
         <div className="flex-1 overflow-y-auto space-y-3 p-3">
           {/* Kind + location */}
-          <div className="flex items-center gap-2 text-[10px] text-muted">
+          <div className="flex items-center gap-2 text-[10px] text-foreground/55">
             <span className="rounded border border-border/50 bg-muted/40 px-1.5 py-0.5 uppercase">
               {fn.kind}
             </span>
@@ -93,7 +93,7 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
           {/* Purpose */}
           {explanation?.purpose && (
             <section>
-              <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+              <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/65">
                 Purpose
               </h3>
               <p className="text-[11px] leading-relaxed text-foreground/90">
@@ -105,12 +105,12 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
           {/* Inputs */}
           {(explanation?.inputs.length ?? 0) > 0 && (
             <section>
-              <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+              <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/65">
                 Inputs
               </h3>
               <table className="w-full text-[10px]">
                 <thead>
-                  <tr className="border-b border-border/30 text-muted">
+                  <tr className="border-b border-border/30 text-foreground/65">
                     <th className="pb-0.5 pr-2 text-left font-medium">Name</th>
                     <th className="pb-0.5 pr-2 text-left font-medium">Type</th>
                     <th className="pb-0.5 text-left font-medium">Description</th>
@@ -120,8 +120,8 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
                   {explanation!.inputs.map((inp) => (
                     <tr key={inp.name} className="border-b border-border/10 text-foreground/80">
                       <td className="py-0.5 pr-2 text-accent">{inp.name}</td>
-                      <td className="py-0.5 pr-2 text-muted">{inp.type}</td>
-                      <td className="py-0.5 text-muted/70">{inp.description}</td>
+                      <td className="py-0.5 pr-2 text-foreground/65">{inp.type}</td>
+                      <td className="py-0.5 text-foreground/50">{inp.description}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -132,12 +132,12 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
           {/* Outputs */}
           {(explanation?.outputs.length ?? 0) > 0 && (
             <section>
-              <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+              <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/65">
                 Outputs
               </h3>
               <table className="w-full text-[10px]">
                 <thead>
-                  <tr className="border-b border-border/30 text-muted">
+                  <tr className="border-b border-border/30 text-foreground/65">
                     <th className="pb-0.5 pr-2 text-left font-medium">Name</th>
                     <th className="pb-0.5 pr-2 text-left font-medium">Type</th>
                     <th className="pb-0.5 text-left font-medium">Description</th>
@@ -147,8 +147,8 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
                   {explanation!.outputs.map((out) => (
                     <tr key={out.name} className="border-b border-border/10 text-foreground/80">
                       <td className="py-0.5 pr-2 text-accent">{out.name}</td>
-                      <td className="py-0.5 pr-2 text-muted">{out.type}</td>
-                      <td className="py-0.5 text-muted/70">{out.description}</td>
+                      <td className="py-0.5 pr-2 text-foreground/65">{out.type}</td>
+                      <td className="py-0.5 text-foreground/50">{out.description}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -159,7 +159,7 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
           {/* Logic */}
           {explanation?.logic && (
             <section>
-              <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+              <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/65">
                 Logic
               </h3>
               <div className="text-[11px] leading-relaxed text-foreground/80 whitespace-pre-wrap">
@@ -181,7 +181,7 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
 
           {/* No explanation yet */}
           {!explanation && !failed && (
-            <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-center text-[10px] text-muted">
+            <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-center text-[10px] text-foreground/65">
               <p>No AI explanation yet.</p>
               <p className="mt-1">
                 The explanation pipeline runs after parsing completes.
@@ -225,7 +225,7 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
             {file.path.split("/").pop()}
           </span>
           <button
-            className="cursor-pointer rounded p-1 text-muted transition-colors duration-150 hover:text-foreground active:scale-95"
+            className="cursor-pointer rounded p-1 text-foreground/55 transition-colors duration-150 hover:text-foreground active:scale-95"
             onClick={closePanel}
             aria-label="Close inspector"
           >
@@ -236,7 +236,7 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
         {/* Body */}
         <div className="flex-1 overflow-y-auto space-y-3 p-3">
           {/* File info */}
-          <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted">
+          <div className="flex flex-wrap items-center gap-2 text-[10px] text-foreground/55">
             <span className="rounded border border-border/50 bg-muted/40 px-1.5 py-0.5 uppercase">
               {file.language}
             </span>
@@ -247,7 +247,7 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
           {/* Functions list */}
           {fileFunctions.length > 0 && (
             <section>
-              <h3 className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+              <h3 className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground/65">
                 Functions
               </h3>
               <ul className="space-y-1">
@@ -277,11 +277,11 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
                             {fn.kind}
                           </span>
                         </div>
-                        <div className="mt-0.5 truncate text-[9px] text-muted">
+                        <div className="mt-0.5 truncate text-[9px] text-foreground/55">
                           L{fn.startLine}–{fn.endLine}
                         </div>
                         {exp?.purpose && (
-                          <div className="mt-0.5 line-clamp-1 text-[9px] text-muted/70">
+                          <div className="mt-0.5 line-clamp-1 text-[9px] text-foreground/50">
                             {exp.purpose}
                           </div>
                         )}
@@ -295,7 +295,7 @@ function DetailPanelComponent({ project, explanations }: DetailPanelProps) {
 
           {/* Full source */}
           <section>
-            <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+            <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/65">
               Full file source
             </h3>
             <SourceCodeView code={file.content} language={file.language} maxHeight={600} />

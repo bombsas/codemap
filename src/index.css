@@ -54,3 +54,37 @@ body {
   background-color: var(--color-primary);
   color: var(--color-on-primary);
 }
+
+/* ── React Flow customisations ── */
+
+/* Controls (zoom +/- etc.) — dark-theme with high-contrast icons */
+.react-flow__controls {
+  box-shadow: 0 0 0 1px var(--color-border), 0 4px 12px rgba(0, 0, 0, 0.4);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  width: 32px;
+  height: 32px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  fill: var(--color-foreground);
+  color: var(--color-foreground);
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--color-muted);
+}
+
+.react-flow__controls-button svg {
+  fill: var(--color-foreground);
+  width: 16px;
+  height: 16px;
+}
