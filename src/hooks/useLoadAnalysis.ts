@@ -214,10 +214,10 @@ export function useLoadAnalysis(): UseLoadAnalysisResult {
           ? (fileIdToPath.get(dep.target_file_id) ?? undefined)
           : undefined;
         const srcFn = dep.source_function_id
-          ? fnUuidToInfo.get(dep.source_function_id)?.fnId
+          ? fnUuidToInfo.get(dep.source_function_id)?.name
           : undefined;
         const tgtFn = dep.target_function_id
-          ? fnUuidToInfo.get(dep.target_function_id)?.fnId
+          ? fnUuidToInfo.get(dep.target_function_id)?.name
           : undefined;
 
         dependencies.push({
