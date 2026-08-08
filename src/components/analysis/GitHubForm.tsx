@@ -31,11 +31,19 @@ export default function GitHubForm({ onFilesReady }: GitHubFormProps) {
         "fetch-repo",
         {
           body: { repoUrl: repoUrl.trim(), branch: branch.trim() || undefined },
+          timeout: 120000, // Allow up to 120s — GitHub Trees API + file fetches
         },
       );
 
       if (fnError) {
-        throw new Error(fnError.message);
+        // The supabase-js error is generic; detect common patterns
+        const msg = fnError.message || "";
+        if (msg.includes("504") || msg.includes("timeout") || msg.includes("timed out")) {
+          throw new Error(
+            "The request timed out. The repository may be too large — try a smaller repo or use ZIP upload.",
+          );
+        }
+        throw new Error(msg);
       }
 
       if (data?.error) {
@@ -45,6 +53,13 @@ export default function GitHubForm({ onFilesReady }: GitHubFormProps) {
       const files = data?.files;
       if (!files || !Array.isArray(files) || files.length === 0) {
         throw new Error("No files found in the repository");
+      }
+
+      if (data.truncated) {
+        // Show a warning but proceed — better UX than blocking
+        setError(
+          `Showing the first ${files.length} files (repo has more). Analysis will be partial.`,
+        );
       }
 
       setSuccess({ fileCount: files.length });

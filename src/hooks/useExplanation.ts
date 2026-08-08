@@ -10,9 +10,10 @@ import type { ParsedProject } from "../types";
 
 /* ── Edge Function batch config ─────────────────────────────────────── */
 
-const BATCH_SIZE = 15;
+const BATCH_SIZE = 10;       // Smaller batches = faster per-batch response, less timeout risk
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1500;
+const MAX_FUNCTIONS_TO_EXPLAIN = 200; // Cap AI work to prevent hour-long pipelines
 
 /* ── Response shape from the Edge Function ──────────────────────────── */
 
@@ -117,6 +118,7 @@ export function useExplanation(): UseExplanationResult {
                     projectId: "pipeline", // ephemeral — the Edge Function validates it exists
                     snippets: batch,
                   },
+                  timeout: 55000, // 55s — Edge Function wall clock limit is 150s on Free
                 },
               );
 
@@ -201,13 +203,18 @@ export function useExplanation(): UseExplanationResult {
       failedRef.current = [];
 
       // Collect all function snippets (skip class-level — too large, not meaningful)
+      // Cap at MAX_FUNCTIONS_TO_EXPLAIN so huge repos don't produce an
+      // hour-long pipeline that feels like a timeout.
       const allSnippets: { functionId: string; code: string }[] = [];
       const snippetMap = new Map<string, string>();
-      for (const file of project.files) {
+      let count = 0;
+      outer: for (const file of project.files) {
         for (const fn of file.functions) {
           if (fn.kind === "class") continue;
+          if (count >= MAX_FUNCTIONS_TO_EXPLAIN) break outer;
           allSnippets.push({ functionId: fn.id, code: fn.codeSnippet });
           snippetMap.set(fn.id, fn.codeSnippet);
+          count++;
         }
       }
       snippetsRef.current = snippetMap;

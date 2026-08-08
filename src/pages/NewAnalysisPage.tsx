@@ -400,6 +400,8 @@ export default function NewAnalysisPage() {
                     functions
                     {explainer.failedIds.length > 0 &&
                       ` · ${explainer.failedIds.length} failed`}
+                    {totalFunctions >= 200 &&
+                      " (capped at 200)"}
                   </p>
                   {currentExplainInfo && (
                     <p className="text-[11px] font-mono text-accent/80 truncate max-w-full px-4">

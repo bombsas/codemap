@@ -9,7 +9,9 @@ const corsHeaders = {
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
-const BATCH_SIZE = 15;
+const BATCH_SIZE = 10;
+const MAX_SNIPPET_CHARS = 2000; // truncate giant functions to keep batches fast
+const OPENAI_TIMEOUT_MS = 45_000; // give up on a slow OpenAI call before the function wall clock runs out
 
 const EXPLANATION_SCHEMA = {
   type: "json_schema" as const,
@@ -120,12 +122,15 @@ Deno.serve(async (req: Request) => {
     const batch = snippets.slice(0, BATCH_SIZE);
     const remaining = Math.max(0, snippets.length - BATCH_SIZE);
 
-    // Build the prompt
+    // Build the prompt — truncate oversized snippets to keep the request fast
     const codeBlocks = batch
-      .map(
-        (s: Snippet) =>
-          `<function id="${s.functionId}">\n\`\`\`\n${s.code}\n\`\`\`\n</function>`,
-      )
+      .map((s: Snippet) => {
+        const code =
+          s.code.length > MAX_SNIPPET_CHARS
+            ? s.code.slice(0, MAX_SNIPPET_CHARS) + "\n// …(truncated)"
+            : s.code;
+        return `<function id="${s.functionId}">\n\`\`\`\n${code}\n\`\`\`\n</function>`;
+      })
       .join("\n\n");
 
     const systemPrompt =
@@ -153,6 +158,7 @@ Deno.serve(async (req: Request) => {
         temperature: 0.3,
         max_tokens: 4096,
       }),
+      signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
     });
 
     if (!response.ok) {
