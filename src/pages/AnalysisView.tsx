@@ -8,7 +8,7 @@
  *     from Supabase via `useLoadAnalysis`.
  */
 import { useLocation, useParams, useNavigate } from "react-router-dom";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
   ArrowLeft,
   Compass,
@@ -35,6 +35,40 @@ interface AnalysisViewLocationState {
   explanations: Record<string, FunctionExplanation>;
   failedIds?: string[];
   name?: string;
+}
+
+/**
+ * SessionStorage cache for fresh analyses.
+ *
+ * Fresh (save-failed) analyses arrive via `location.state`, which is lost
+ * when the user navigates away and comes back. We mirror them into
+ * sessionStorage so they survive in‑tab navigation within the same session.
+ */
+const SESSION_CACHE_PREFIX = "codemap-fresh:";
+
+function cacheFreshData(
+  projectId: string,
+  data: AnalysisViewLocationState,
+): void {
+  try {
+    sessionStorage.setItem(
+      SESSION_CACHE_PREFIX + projectId,
+      JSON.stringify(data),
+    );
+  } catch {
+    /* storage full — non‑critical */
+  }
+}
+
+function loadCachedFreshData(
+  projectId: string,
+): AnalysisViewLocationState | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_CACHE_PREFIX + projectId);
+    return raw ? (JSON.parse(raw) as AnalysisViewLocationState) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Adapter: plain Record from router state → Map for the hooks/components. */
@@ -151,13 +185,35 @@ export default function AnalysisView() {
   const state = location.state as AnalysisViewLocationState | null;
 
   // ── Determine data source ─────────────────────────────────────────
-
+  //
   // Priority 1: location.state (fresh analysis from pipeline fallback)
-  const freshProject: ParsedProject | null = state?.project ?? null;
-  const freshExplanations: Map<string, FunctionExplanation> = recordToMap(
-    state?.explanations,
+  // Priority 2: sessionStorage cache (restored on navigate-back)
+  // Priority 3: loader from Supabase DB (saved analyses)
+
+  // Try to restore from sessionStorage when location.state is missing
+  const restoredState = useMemo(
+    () => {
+      if (!state?.project && projectId?.startsWith("session-")) {
+        return loadCachedFreshData(projectId);
+      }
+      return null;
+    },
+    [state?.project, projectId],
   );
-  const hasLocationState = !!state?.project;
+
+  const effectiveState = state ?? restoredState;
+  const freshProject: ParsedProject | null = effectiveState?.project ?? null;
+  const freshExplanations: Map<string, FunctionExplanation> = recordToMap(
+    effectiveState?.explanations,
+  );
+  const hasLocationState = !!effectiveState?.project;
+
+  // Mirror location.state into sessionStorage so it survives navigation
+  useEffect(() => {
+    if (state?.project && projectId?.startsWith("session-")) {
+      cacheFreshData(projectId, state);
+    }
+  }, [state, projectId]);
 
   // ── Rename state ──────────────────────────────────────────────────
   const [renaming, setRenaming] = useState(false);
@@ -167,10 +223,11 @@ export default function AnalysisView() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Priority 2: load from DB when navigating from dashboard / direct URL
+  // Priority 3: load from DB when navigating from dashboard / direct URL
   useEffect(() => {
     if (!hasLocationState && projectId && projectId.startsWith("session-")) {
       // session-* IDs are ephemeral-only (save failed). Skip DB load.
+      // Data comes from sessionStorage cache (restoredState).
       return;
     }
     if (!hasLocationState && projectId) {
@@ -192,7 +249,7 @@ export default function AnalysisView() {
     ? freshExplanations
     : loader.analysis?.explanations ?? new Map();
   const displayName = hasLocationState
-    ? (state?.name ?? "Analysis")
+    ? (effectiveState?.name ?? "Analysis")
     : (loader.analysis?.name ?? "Analysis");
   const fileCount = project?.files.length ?? loader.analysis?.fileCount ?? 0;
   const fnCount = explanations.size;
@@ -206,7 +263,7 @@ export default function AnalysisView() {
   const explainer: UseExplanationResult = {
     status: project ? "done" : "idle",
     explanations,
-    failedIds: hasLocationState ? (state?.failedIds ?? []) : (loader.analysis?.failedIds ?? []),
+    failedIds: hasLocationState ? (effectiveState?.failedIds ?? []) : (loader.analysis?.failedIds ?? []),
     progress: { explained: fnCount, totalFunctions: fnCount },
     error: null,
     run: () => {},
@@ -352,6 +409,37 @@ export default function AnalysisView() {
           </p>
           <p className="mb-6 text-xs text-muted/60">
             Project id: <code className="text-accent">{projectId}</code>
+          </p>
+          <button
+            onClick={() => navigate("/new")}
+            className="cursor-pointer rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-all duration-150 hover:opacity-90 active:scale-[0.97]"
+          >
+            New analysis
+          </button>
+        </div>
+      </PageLayout>
+    );
+  }
+
+  // ── Full workspace ────────────────────────────────────────────────
+
+  // Edge case: project loaded from DB but has no files (orphan record)
+  if (project && project.files.length === 0) {
+    return (
+      <PageLayout>
+        <div className="flex flex-col items-center justify-center py-24">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-border bg-muted/20">
+            <RefreshCw className="h-7 w-7 text-muted" />
+          </div>
+          <h1 className="mb-2 font-heading text-2xl text-foreground tracking-wide">
+            Analysis data not found
+          </h1>
+          <p className="mb-2 max-w-md text-center text-sm text-muted">
+            The analysis record exists but the code data could not be loaded.
+            This can happen if the save process was interrupted.
+          </p>
+          <p className="mb-6 text-xs text-muted/60">
+            Try running the analysis again.
           </p>
           <button
             onClick={() => navigate("/new")}
