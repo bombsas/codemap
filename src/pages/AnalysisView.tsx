@@ -8,13 +8,22 @@
  *     from Supabase via `useLoadAnalysis`.
  */
 import { useLocation, useParams, useNavigate } from "react-router-dom";
-import { useEffect } from "react";
-import { ArrowLeft, Compass, Loader2, RefreshCw } from "lucide-react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import {
+  ArrowLeft,
+  Compass,
+  Loader2,
+  RefreshCw,
+  Trash2,
+  Pencil,
+  AlertTriangle,
+} from "lucide-react";
 import PageLayout from "../components/layout/PageLayout";
 import GraphCanvas from "../components/visualization/GraphCanvas";
 import DetailPanel from "../components/inspector/DetailPanel";
 import { useVisualizationStore } from "../store/visualizationStore";
 import { useLoadAnalysis } from "../hooks/useLoadAnalysis";
+import { supabase } from "../lib/supabase";
 import type { ParsedProject } from "../types";
 import type { FunctionExplanation } from "../types/analysis";
 import type { UseExplanationResult } from "../hooks/useExplanation";
@@ -33,6 +42,99 @@ function recordToMap(
   record?: Record<string, FunctionExplanation>,
 ): Map<string, FunctionExplanation> {
   return new Map(Object.entries(record ?? {}));
+}
+
+/* ── Inline Rename ──────────────────────────────────────────────────── */
+
+interface RenameInputProps {
+  value: string;
+  onSave: (name: string) => void;
+  onCancel: () => void;
+}
+
+function RenameInput({ value, onSave, onCancel }: RenameInputProps) {
+  const [name, setName] = useState(value);
+  const ref = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
+
+  const commit = () => {
+    const trimmed = name.trim();
+    if (trimmed && trimmed !== value) onSave(trimmed);
+    else onCancel();
+  };
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      value={name}
+      onChange={(e) => setName(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        if (e.key === "Escape") onCancel();
+      }}
+      onClick={(e) => e.stopPropagation()}
+      className="bg-background border border-accent/50 rounded px-1.5 py-0.5 text-sm text-foreground font-heading tracking-wide focus:outline-none focus:ring-1 focus:ring-accent/30 w-full"
+    />
+  );
+}
+
+/* ── Delete confirmation modal ──────────────────────────────────────── */
+
+function ConfirmModal({
+  title,
+  message,
+  onConfirm,
+  onCancel,
+  loading = false,
+}: {
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  loading?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-surface border border-border rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-destructive/10 border border-destructive/20 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-destructive" />
+          </div>
+          <h3 className="font-heading text-foreground text-lg tracking-wide">{title}</h3>
+        </div>
+        <p className="text-sm text-muted mb-6">{message}</p>
+        <div className="flex items-center justify-end gap-3">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="px-4 py-2 text-sm text-muted hover:text-foreground border border-border rounded-md transition-colors duration-150 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-destructive rounded-md hover:opacity-90 transition-all duration-150 active:scale-[0.97] disabled:opacity-50"
+          >
+            {loading ? (
+              <>
+                <div className="w-4 h-4 rounded border-2 border-white/30 border-t-white animate-spin" />
+                Deleting…
+              </>
+            ) : (
+              "Delete"
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ── Component ─────────────────────────────────────────────────────── */
@@ -56,6 +158,14 @@ export default function AnalysisView() {
     state?.explanations,
   );
   const hasLocationState = !!state?.project;
+
+  // ── Rename state ──────────────────────────────────────────────────
+  const [renaming, setRenaming] = useState(false);
+  const [renameName, setRenameName] = useState("");
+
+  // ── Delete state ──────────────────────────────────────────────────
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Priority 2: load from DB when navigating from dashboard / direct URL
   useEffect(() => {
@@ -86,6 +196,12 @@ export default function AnalysisView() {
     : (loader.analysis?.name ?? "Analysis");
   const fileCount = project?.files.length ?? loader.analysis?.fileCount ?? 0;
   const fnCount = explanations.size;
+  const isSavedAnalysis = !hasLocationState && !!projectId && !projectId.startsWith("session-");
+
+  // Sync renameName when displayName changes
+  useEffect(() => {
+    setRenameName(displayName);
+  }, [displayName]);
 
   const explainer: UseExplanationResult = {
     status: project ? "done" : "idle",
@@ -97,6 +213,49 @@ export default function AnalysisView() {
     retry: () => {},
     reset: () => {},
   };
+
+  // ── Rename handler ────────────────────────────────────────────────
+
+  const handleRename = useCallback(
+    async (newName: string) => {
+      if (!projectId || !isSavedAnalysis) return;
+
+      // Optimistically update the loader's analysis name
+      if (loader.analysis) {
+        loader.analysis.name = newName;
+      }
+
+      setRenaming(false);
+
+      await supabase
+        .from("projects")
+        .update({ name: newName, updated_at: new Date().toISOString() })
+        .eq("id", projectId);
+    },
+    [projectId, isSavedAnalysis, loader],
+  );
+
+  // ── Delete handler ────────────────────────────────────────────────
+
+  const handleDelete = useCallback(async () => {
+    if (!projectId || !isSavedAnalysis) return;
+    setDeleting(true);
+
+    try {
+      const { error } = await supabase
+        .from("projects")
+        .delete()
+        .eq("id", projectId);
+
+      if (error) throw new Error(error.message);
+
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
+      console.error("Delete failed:", err);
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  }, [projectId, isSavedAnalysis, navigate]);
 
   // ── Loading state (DB) ────────────────────────────────────────────
 
@@ -175,7 +334,6 @@ export default function AnalysisView() {
   // ── Empty / no data (fresh state fallback or invalid) ─────────────
 
   if (!project && !hasLocationState && loader.status === "idle") {
-    // Still loading from DB — show nothing yet
     return null;
   }
 
@@ -210,6 +368,16 @@ export default function AnalysisView() {
 
   return (
     <PageLayout fullHeight>
+      {showDeleteConfirm && (
+        <ConfirmModal
+          title="Delete this analysis?"
+          message={`This will permanently delete "${displayName}" and all its data. This cannot be undone.`}
+          loading={deleting}
+          onConfirm={handleDelete}
+          onCancel={() => { setShowDeleteConfirm(false); setDeleting(false); }}
+        />
+      )}
+
       <div className="flex min-h-0 flex-1 flex-col">
         {/* Top bar */}
         <div className="flex items-center justify-between border-b border-border/60 bg-surface/60 px-4 py-2">
@@ -223,19 +391,57 @@ export default function AnalysisView() {
               <span className="hidden sm:inline">New analysis</span>
             </button>
             <div className="h-4 w-px bg-border/60" />
-            <div className="min-w-0">
-              <span className="truncate font-heading text-sm text-foreground">
-                {displayName}
-              </span>
-              <span className="ml-2 hidden text-[10px] text-muted md:inline">
+            <div className="min-w-0 flex items-center gap-2">
+              {renaming ? (
+                <div className="w-48">
+                  <RenameInput
+                    value={renameName}
+                    onSave={handleRename}
+                    onCancel={() => setRenaming(false)}
+                  />
+                </div>
+              ) : (
+                <span className="truncate font-heading text-sm text-foreground">
+                  {displayName}
+                </span>
+              )}
+              <span className="hidden text-[10px] text-muted md:inline">
                 {fileCount} files · {fnCount} explained
               </span>
+
+              {/* Rename button — only for saved analyses */}
+              {isSavedAnalysis && !renaming && (
+                <button
+                  onClick={() => {
+                    setRenameName(displayName);
+                    setRenaming(true);
+                  }}
+                  className="p-1 rounded text-muted hover:text-foreground hover:bg-muted/20 transition-colors duration-150 cursor-pointer"
+                  aria-label="Rename analysis"
+                >
+                  <Pencil size={12} />
+                </button>
+              )}
             </div>
           </div>
-          <span className="flex items-center gap-1.5 text-[10px] text-accent">
-            <Loader2 size={11} className="hidden" />
-            Ready
-          </span>
+
+          <div className="flex items-center gap-2">
+            {/* Delete button — only for saved analyses */}
+            {isSavedAnalysis && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] text-muted hover:text-destructive hover:bg-destructive/10 border border-transparent hover:border-destructive/20 transition-all duration-150 cursor-pointer"
+                aria-label="Delete analysis"
+              >
+                <Trash2 size={11} />
+                <span className="hidden sm:inline">Delete</span>
+              </button>
+            )}
+            <span className="flex items-center gap-1.5 text-[10px] text-accent">
+              <Loader2 size={11} className="hidden" />
+              Ready
+            </span>
+          </div>
         </div>
 
         {/* Workspace: canvas + inspector */}

@@ -5,12 +5,13 @@ import { AlertCircle, CheckCircle2 } from "lucide-react";
 
 interface GitHubFormProps {
   onFilesReady: (files: Array<{ path: string; content: string }>) => void;
+  initialUrl?: string;
 }
 
 const GITHUB_URL_REGEX = /^https:\/\/github\.com\/[^/]+\/[^/]+/;
 
-export default function GitHubForm({ onFilesReady }: GitHubFormProps) {
-  const [repoUrl, setRepoUrl] = useState("");
+export default function GitHubForm({ onFilesReady, initialUrl }: GitHubFormProps) {
+  const [repoUrl, setRepoUrl] = useState(initialUrl ?? "");
   const [branch, setBranch] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { SiGithub } from "react-icons/si";
 import {
   Upload,
@@ -67,7 +67,11 @@ type PipelineStep =
 
 export default function NewAnalysisPage() {
   const navigate = useNavigate();
-  const [method, setMethod] = useState<InputMethod>("github");
+  const location = useLocation();
+  const [method, setMethod] = useState<InputMethod>(() => {
+    const prefill = location.state as { prefillMethod?: InputMethod } | null;
+    return prefill?.prefillMethod ?? "github";
+  });
   const [collectedFiles, setCollectedFiles] = useState<AnalysisFile[] | null>(
     null,
   );
@@ -351,7 +355,13 @@ export default function NewAnalysisPage() {
 
             <div className="bg-surface border border-border rounded-lg p-5">
               {method === "github" && (
-                <GitHubForm onFilesReady={handleFilesReady} />
+                <GitHubForm
+                  onFilesReady={handleFilesReady}
+                  initialUrl={
+                    (location.state as { prefillUrl?: string } | null)
+                      ?.prefillUrl
+                  }
+                />
               )}
               {method === "zip" && (
                 <ZipUpload onFilesReady={handleFilesReady} />
