@@ -20,11 +20,13 @@ const EXPLANATION_SCHEMA = {
     strict: true,
     schema: {
       type: "object",
+      additionalProperties: false,
       properties: {
         explanations: {
           type: "array",
           items: {
             type: "object",
+            additionalProperties: false,
             properties: {
               functionId: {
                 type: "string",
@@ -39,6 +41,7 @@ const EXPLANATION_SCHEMA = {
                 type: "array",
                 items: {
                   type: "object",
+                  additionalProperties: false,
                   properties: {
                     name: { type: "string" },
                     type: { type: "string" },
@@ -52,6 +55,7 @@ const EXPLANATION_SCHEMA = {
                 type: "array",
                 items: {
                   type: "object",
+                  additionalProperties: false,
                   properties: {
                     name: { type: "string" },
                     type: { type: "string" },
@@ -71,7 +75,7 @@ const EXPLANATION_SCHEMA = {
           },
         },
         remaining: {
-          type: "number",
+          type: "integer",
           description:
             "Number of remaining snippets not yet processed in this batch",
         },

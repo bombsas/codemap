@@ -100,24 +100,37 @@ export default function NewAnalysisPage() {
 
   /* ── Chain: parsing → analyzing → explaining ─────────────────────── */
 
-  // When parser finishes → move to explaining step
+  // When parser finishes → move to "analyzing" (brief UI pause before
+  // explanations start). Kept as a pure state transition: calling
+  // setPipelineStep here in an effect whose deps include pipelineStep would
+  // re-run the effect, execute its cleanup, and cancel the timeout below.
   useEffect(() => {
     if (pipelineStep !== "parsing") return;
     if (parser.status === "done" && parser.project) {
-      const project = parser.project; // capture for closure
-      // Short delay to show "Analyzing" (building dependency graph happens
-      // inside parseProject and is fast for most projects)
       setPipelineStep("analyzing");
-      const t = setTimeout(() => {
-        setPipelineStep("explaining");
-        explainer.run(project);
-      }, 600);
-      return () => clearTimeout(t);
     }
     if (parser.status === "error") {
       setPipelineStep("error");
     }
-  }, [parser.status, parser.project, pipelineStep, explainer]);
+  }, [parser.status, pipelineStep]);
+
+  // Short delay to show "Analyzing" (building the dependency graph happens
+  // inside parseProject and is fast for most projects), then kick off the
+  // explanation pipeline. Note: `explainer` is a fresh object every render,
+  // so it is deliberately excluded from the deps — `explainer.run` itself is
+  // stable (useCallback), and including the object would cancel this timeout
+  // on every render, stranding the pipeline at "analyzing".
+  useEffect(() => {
+    if (pipelineStep !== "analyzing") return;
+    const project = parser.project;
+    if (!project) return;
+    const t = setTimeout(() => {
+      setPipelineStep("explaining");
+      explainer.run(project);
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipelineStep, parser.project]);
 
   // When explainer finishes → move to building step, save to Supabase,
   // then navigate to the real project-based URL.
