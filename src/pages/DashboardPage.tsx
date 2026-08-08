@@ -275,18 +275,30 @@ export default function DashboardPage() {
 
   const handleRename = useCallback(
     async (projectId: string, newName: string) => {
+      const prevName = projects.find((p) => p.id === projectId)?.name;
+
       // Optimistic update
       setProjects((prev) =>
         prev.map((p) => (p.id === projectId ? { ...p, name: newName } : p)),
       );
       setRenamingId(null);
 
-      await supabase
+      const { error } = await supabase
         .from("projects")
         .update({ name: newName, updated_at: new Date().toISOString() })
         .eq("id", projectId);
+
+      if (error) {
+        console.error("Rename failed:", error.message);
+        // Revert optimistic update
+        if (prevName) {
+          setProjects((prev) =>
+            prev.map((p) => (p.id === projectId ? { ...p, name: prevName } : p)),
+          );
+        }
+      }
     },
-    [],
+    [projects],
   );
 
   /* ── Delete handler ──────────────────────────────────────────────────── */
@@ -303,10 +315,13 @@ export default function DashboardPage() {
 
       if (error) throw new Error(error.message);
 
+      // Remove from local state
       setProjects((prev) => prev.filter((p) => p.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch (err) {
       console.error("Delete failed:", err);
+      // Close the modal on error too — the card stays visible so user can retry
+      setDeleteTarget(null);
     } finally {
       setDeleting(false);
     }
