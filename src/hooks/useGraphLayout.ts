@@ -368,6 +368,10 @@ async function buildMindMapLayout(
 
   const elkChildren: { id: string; width: number; height: number }[] = [];
   const elkEdges: { id: string; sources: string[]; targets: string[] }[] = [];
+  // Merge edge types per file pair — multiple dependencies can exist between
+  // the same two files (e.g. imports + calls), but elkjs/React need exactly ONE
+  // edge per pair with a unique id.
+  const edgeTypeListById = new Map<string, string[]>();
 
   for (const fp of visited) {
     elkChildren.push({
@@ -380,8 +384,15 @@ async function buildMindMapLayout(
   for (const d of relevant) {
     if (!d.sourceFile || !d.targetFile) continue;
     if (!visited.has(d.sourceFile) || !visited.has(d.targetFile)) continue;
+    const id = `emm:${d.sourceFile}:${d.targetFile}`;
+    const list = edgeTypeListById.get(id);
+    if (list) {
+      if (!list.includes(d.type)) list.push(d.type);
+      continue; // edge already pushed — only merge type label
+    }
+    edgeTypeListById.set(id, [d.type]);
     elkEdges.push({
-      id: `emm:${d.sourceFile}:${d.targetFile}`,
+      id,
       sources: [`mm:${d.sourceFile}`],
       targets: [`mm:${d.targetFile}`],
     });
@@ -418,19 +429,15 @@ async function buildMindMapLayout(
     for (const e of graph.edges ?? []) {
       const sourceId = e.sources?.[0] ?? "";
       const targetId = e.targets?.[0] ?? "";
-      const dep = relevant.find(
-        (d) =>
-          `mm:${d.sourceFile}` === sourceId && `mm:${d.targetFile}` === targetId,
-      );
-      const edgeType = dep?.type ?? "imports";
+      const types = edgeTypeListById.get(e.id) ?? ["imports"];
       edges.push({
         id: e.id,
         source: sourceId,
         target: targetId,
         type: "depEdge",
-        data: { edgeType },
-        style: { stroke: depColor(edgeType), strokeWidth: 2 },
-        label: depLabel(edgeType),
+        data: { edgeType: types[0] },
+        style: { stroke: depColor(types[0]), strokeWidth: 2 },
+        label: types.map(depLabel).join(", "),
       });
     }
 
