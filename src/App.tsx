@@ -6,6 +6,7 @@ import RegisterPage from "./pages/RegisterPage";
 import DashboardPage from "./pages/DashboardPage";
 import NewAnalysisPage from "./pages/NewAnalysisPage";
 import AnalysisView from "./pages/AnalysisView";
+import ProfilePage from "./pages/ProfilePage";
 
 export default function App() {
   return (
@@ -35,6 +36,14 @@ export default function App() {
           element={
             <AuthGuard>
               <AnalysisView />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <AuthGuard>
+              <ProfilePage />
             </AuthGuard>
           }
         />

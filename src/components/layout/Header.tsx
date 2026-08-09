@@ -33,16 +33,22 @@ export default function Header({ userEmail }: HeaderProps) {
           </button>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {userEmail && (
-            <span className="text-muted text-xs hidden sm:block truncate max-w-[160px]">
+            <span className="text-muted text-xs hidden sm:block truncate max-w-[140px]">
               {userEmail}
             </span>
           )}
           <button
+            onClick={() => navigate("/profile")}
+            className="text-xs text-muted hover:text-foreground transition-colors duration-150 px-3 py-1.5 rounded-md border border-border hover:border-border/60 cursor-pointer"
+          >
+            Profile
+          </button>
+          <button
             onClick={handleSignOut}
             disabled={signingOut}
-            className="text-xs text-muted hover:text-foreground transition-colors duration-150 px-3 py-1.5 rounded-md border border-border hover:border-border/60 disabled:opacity-50"
+            className="text-xs text-muted hover:text-foreground transition-colors duration-150 px-3 py-1.5 rounded-md border border-border hover:border-border/60 disabled:opacity-50 cursor-pointer"
           >
             {signingOut ? "Signing out..." : "Sign Out"}
           </button>

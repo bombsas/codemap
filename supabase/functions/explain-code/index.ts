@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -114,7 +115,28 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    // Try to get the user's own OpenAI key from their settings
+    let openaiKey = Deno.env.get("OPENAI_API_KEY");
+
+    try {
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+        { global: { headers: { Authorization: authHeader } } },
+      );
+
+      const { data: userSettings } = await supabase
+        .from("user_settings")
+        .select("openai_api_key")
+        .maybeSingle();
+
+      if (userSettings?.openai_api_key) {
+        openaiKey = userSettings.openai_api_key;
+      }
+    } catch {
+      // If user_settings lookup fails, fall back to the global key
+      console.warn("User settings lookup failed, using global key");
+    }
     if (!openaiKey) {
       return new Response(
         JSON.stringify({ error: "Server misconfigured: missing OPENAI_API_KEY" }),

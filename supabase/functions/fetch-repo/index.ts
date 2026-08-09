@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -244,7 +245,29 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const result = await fetchRepoFiles(parsed.owner, parsed.repo, branch || "HEAD", Deno.env.get("GITHUB_TOKEN"));
+    // Try to get the user's own GitHub token from their settings
+    let githubToken = Deno.env.get("GITHUB_TOKEN");
+
+    try {
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+        { global: { headers: { Authorization: authHeader } } },
+      );
+
+      const { data: userSettings } = await supabase
+        .from("user_settings")
+        .select("github_token")
+        .maybeSingle();
+
+      if (userSettings?.github_token) {
+        githubToken = userSettings.github_token;
+      }
+    } catch {
+      console.warn("User settings lookup failed, using global GitHub token");
+    }
+
+    const result = await fetchRepoFiles(parsed.owner, parsed.repo, branch || "HEAD", githubToken);
 
     return new Response(
       JSON.stringify({ files: result.files, truncated: result.truncated }),
