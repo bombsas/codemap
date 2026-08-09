@@ -122,6 +122,7 @@ export async function saveAnalysis(
     code_snippet: string;
     explanation: Json | null;
     explanation_status: string;
+    qualified_name: string | null;
   }> = [];
 
   for (const parsedFile of project.files) {
@@ -145,6 +146,7 @@ export async function saveAnalysis(
           : failedIds.includes(fn.id)
             ? "failed"
             : "pending",
+        qualified_name: fn.qualifiedName ?? null,
       });
     }
   }

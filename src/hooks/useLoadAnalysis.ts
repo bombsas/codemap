@@ -161,7 +161,7 @@ export function useLoadAnalysis(): UseLoadAnalysisResult {
             fnId: fnStringId,
             name: fn.name,
             kind: fn.kind,
-            qualifiedName: fn.name, // plain name; we don't store parentClass in DB
+            qualifiedName: fn.qualified_name ?? fn.name,
             explanation,
           });
 
@@ -176,7 +176,7 @@ export function useLoadAnalysis(): UseLoadAnalysisResult {
             calls: [],   // Filled by buildDependencyGraph during live parse;
             imports: [], // these are empty for loaded analyses since the
                          // dependency graph is stored separately.
-            qualifiedName: fn.name,
+            qualifiedName: fn.qualified_name ?? fn.name,
           });
         }
 

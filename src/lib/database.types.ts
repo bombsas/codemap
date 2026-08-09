@@ -128,6 +128,7 @@ export type Database = {
           kind: string
           name: string
           project_id: string
+          qualified_name: string | null
           signature: string | null
           start_line: number
         }
@@ -142,6 +143,7 @@ export type Database = {
           kind: string
           name: string
           project_id: string
+          qualified_name?: string | null
           signature?: string | null
           start_line: number
         }
@@ -156,6 +158,7 @@ export type Database = {
           kind?: string
           name?: string
           project_id?: string
+          qualified_name?: string | null
           signature?: string | null
           start_line?: number
         }
