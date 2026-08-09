@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [showForgot, setShowForgot] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,7 +19,17 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      if (isSignUp) {
+      if (showForgot) {
+        const { error: resetError } =
+          await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${window.location.origin}/reset-password`,
+          });
+
+        if (resetError) throw resetError;
+
+        setMessage("Check your email for a password reset link.");
+        setShowForgot(false);
+      } else if (isSignUp) {
         const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
@@ -27,9 +38,7 @@ export default function LoginPage() {
 
         if (signUpError) throw signUpError;
 
-        setMessage(
-          "Account created! You can now sign in."
-        );
+        setMessage("Account created! You can now sign in.");
         setIsSignUp(false);
       } else {
         const { error: signInError } =
@@ -73,7 +82,11 @@ export default function LoginPage() {
           className="bg-surface border border-border rounded-lg p-6 space-y-4"
         >
           <h2 className="font-heading text-foreground text-lg text-center">
-            {isSignUp ? "Create Account" : "Sign In"}
+            {showForgot
+              ? "Reset Password"
+              : isSignUp
+              ? "Create Account"
+              : "Sign In"}
           </h2>
 
           {error && (
@@ -86,6 +99,12 @@ export default function LoginPage() {
             <div className="bg-accent/10 border border-accent/30 rounded-md px-3 py-2 text-xs text-accent">
               {message}
             </div>
+          )}
+
+          {showForgot && (
+            <p className="text-xs text-muted text-center">
+              Enter your email and we'll send you a reset link.
+            </p>
           )}
 
           <div>
@@ -107,25 +126,27 @@ export default function LoginPage() {
             />
           </div>
 
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-xs text-muted mb-1.5"
-            >
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-              placeholder="••••••••"
-              className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-150"
-            />
-          </div>
+          {!showForgot && (
+            <div>
+              <label
+                htmlFor="password"
+                className="block text-xs text-muted mb-1.5"
+              >
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+                placeholder="••••••••"
+                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-150"
+              />
+            </div>
+          )}
 
           <button
             type="submit"
@@ -134,24 +155,73 @@ export default function LoginPage() {
           >
             {loading
               ? "Please wait..."
+              : showForgot
+              ? "Send Reset Link"
               : isSignUp
               ? "Create Account"
               : "Sign In"}
           </button>
 
+          {!showForgot && !isSignUp && (
+            <p className="text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForgot(true);
+                  setError(null);
+                  setMessage(null);
+                }}
+                className="text-xs text-muted hover:text-accent transition-colors"
+              >
+                Forgot password?
+              </button>
+            </p>
+          )}
+
           <p className="text-center text-xs text-muted">
-            {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
-            <button
-              type="button"
-              onClick={() => {
-                setIsSignUp(!isSignUp);
-                setError(null);
-                setMessage(null);
-              }}
-              className="text-accent hover:underline underline-offset-2"
-            >
-              {isSignUp ? "Sign in" : "Create one"}
-            </button>
+            {showForgot ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForgot(false);
+                  setError(null);
+                  setMessage(null);
+                }}
+                className="text-accent hover:underline underline-offset-2"
+              >
+                ← Back to sign in
+              </button>
+            ) : isSignUp ? (
+              <>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSignUp(false);
+                    setError(null);
+                    setMessage(null);
+                  }}
+                  className="text-accent hover:underline underline-offset-2"
+                >
+                  Sign in
+                </button>
+              </>
+            ) : (
+              <>
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSignUp(true);
+                    setError(null);
+                    setMessage(null);
+                  }}
+                  className="text-accent hover:underline underline-offset-2"
+                >
+                  Create one
+                </button>
+              </>
+            )}
           </p>
         </form>
 
