@@ -81,10 +81,22 @@ export async function saveAnalysis(
   // ── Step 2: Insert files ─────────────────────────────────────────────
   onProgress?.("saving-files", "Saving files…");
 
+  // Normalise language to one the DB's check constraint accepts.
+  // detectLanguage() can return 30+ different IDs but the DB only allows
+  // a specific set — anything outside that set is mapped to "javascript"
+  // so the insert doesn't fail.
+  const DB_LANGUAGES = new Set([
+    "javascript", "typescript", "tsx", "python", "java", "go", "c", "cpp",
+    "rust", "ruby", "php", "swift", "kotlin", "scala",
+    "css", "scss", "sass", "less", "html", "vue", "svelte", "astro",
+    "json", "yaml", "toml", "xml", "markdown", "sql", "graphql",
+    "shell", "dotenv", "ignore", "gradle", "unsupported",
+  ]);
+
   const fileRows = files.map((f) => ({
     project_id: projectId,
     path: f.path,
-    language: f.language === "unsupported" ? "javascript" : f.language,
+    language: DB_LANGUAGES.has(f.language) ? f.language : "javascript",
     content: f.content,
   }));
 
