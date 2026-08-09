@@ -11,8 +11,11 @@ import {
   Trash2,
   RefreshCw,
   AlertTriangle,
+  Download,
+  Loader2 as Spinner,
 } from "lucide-react";
 import { SiGithub } from "react-icons/si";
+import { importFromJsonFile, saveToLocalStore } from "../lib/localStore";
 
 type Project = Database["public"]["Tables"]["projects"]["Row"];
 
@@ -253,6 +256,11 @@ export default function DashboardPage() {
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Import state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+
   const fetchProjects = useCallback(async () => {
     const { data } = await supabase
       .from("projects")
@@ -342,6 +350,38 @@ export default function DashboardPage() {
     [navigate],
   );
 
+  /* ── Import handler ──────────────────────────────────────────────────── */
+
+  const handleImport = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      setImporting(true);
+      setImportError(null);
+
+      try {
+        const data = await importFromJsonFile(file);
+
+        // Generate a fresh local id to avoid collisions, then save to IndexedDB
+        // and navigate to the analysis view.
+        const newId = `local-${crypto.randomUUID()}`;
+        await saveToLocalStore({ ...data, id: newId });
+
+        navigate(`/analysis/${newId}`);
+      } catch (err) {
+        setImportError(
+          err instanceof Error ? err.message : "Failed to import analysis",
+        );
+      } finally {
+        setImporting(false);
+        // Reset the input so the same file can be re-selected
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    },
+    [navigate],
+  );
+
   return (
     <PageLayout userEmail={userEmail}>
       {/* ── Delete confirmation modal ──────────────────────────────── */}
@@ -367,13 +407,40 @@ export default function DashboardPage() {
               : `${projects.length} ${projects.length === 1 ? "analysis" : "analyses"}`}
           </p>
         </div>
-        <button
-          onClick={() => navigate("/new")}
-          className="inline-flex items-center gap-2 bg-primary text-on-primary rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-all duration-150 active:scale-[0.98]"
-        >
-          <FileCode className="w-4 h-4" />
-          New Analysis
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".codemap.json,.json"
+            onChange={handleImport}
+            className="hidden"
+            aria-label="Import analysis from JSON file"
+          />
+          {importError && (
+            <span className="text-[11px] text-destructive max-w-[200px] text-right">
+              {importError}
+            </span>
+          )}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            className="inline-flex items-center gap-2 bg-surface text-foreground border border-border rounded-md px-4 py-2 text-sm font-medium hover:bg-muted/20 hover:border-accent/30 transition-all duration-150 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+          >
+            {importing ? (
+              <Spinner className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            Import
+          </button>
+          <button
+            onClick={() => navigate("/new")}
+            className="inline-flex items-center gap-2 bg-primary text-on-primary rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-all duration-150 active:scale-[0.98]"
+          >
+            <FileCode className="w-4 h-4" />
+            New Analysis
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -390,14 +457,29 @@ export default function DashboardPage() {
           </h3>
           <p className="text-sm text-muted mb-6 max-w-sm text-center">
             Start by uploading a codebase — paste a GitHub URL, upload a ZIP, or
-            paste files directly.
+            paste files directly — or import a previously exported
+            <code className="text-accent mx-1">.codemap.json</code> file.
           </p>
-          <button
-            onClick={() => navigate("/new")}
-            className="inline-flex items-center gap-2 bg-primary text-on-primary rounded-md px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-all duration-150 active:scale-[0.98]"
-          >
-            New Analysis
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate("/new")}
+              className="inline-flex items-center gap-2 bg-primary text-on-primary rounded-md px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-all duration-150 active:scale-[0.98]"
+            >
+              New Analysis
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              className="inline-flex items-center gap-2 bg-surface text-foreground border border-border rounded-md px-5 py-2.5 text-sm font-medium hover:bg-muted/20 hover:border-accent/30 transition-all duration-150 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+            >
+              {importing ? (
+                <Spinner className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              Import
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
