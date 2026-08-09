@@ -63,9 +63,11 @@ export default function ProfilePage() {
       if (!user) throw new Error("Not authenticated");
 
       // Build the payload — only include non-empty values
-      const payload: Record<string, string> = { user_id: user.id };
-      if (openaiKey.trim()) payload["openai_api_key"] = openaiKey.trim();
-      if (githubToken.trim()) payload["github_token"] = githubToken.trim();
+      const payload: Database["public"]["Tables"]["user_settings"]["Insert"] = {
+        user_id: user.id,
+      };
+      if (openaiKey.trim()) payload.openai_api_key = openaiKey.trim();
+      if (githubToken.trim()) payload.github_token = githubToken.trim();
 
       if (settings) {
         // Update existing

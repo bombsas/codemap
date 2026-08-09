@@ -1,11 +1,13 @@
 /**
  * AnalysisView — the visualization workspace.
  *
- * Two entry paths:
+ * Three data-source paths (in priority order):
  *  1. **Fresh analysis** — data arrives via `location.state` (set by
  *     NewAnalysisPage when the pipeline completes but save failed).
- *  2. **Saved analysis** — `projectId` param from the URL; data is loaded
- *     from Supabase via `useLoadAnalysis`.
+ *  2. **Local analysis** — `projectId` starts with `local-`; data is loaded
+ *     from IndexedDB (used when Supabase save fails).
+ *  3. **Saved analysis** — a real Supabase UUID; data is loaded from Supabase
+ *     via `useLoadAnalysis`.
  */
 import { useLocation, useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
@@ -16,6 +18,7 @@ import {
   RefreshCw,
   Trash2,
   Pencil,
+  Download,
   AlertTriangle,
 } from "lucide-react";
 import PageLayout from "../components/layout/PageLayout";
@@ -23,6 +26,8 @@ import GraphCanvas from "../components/visualization/GraphCanvas";
 import DetailPanel from "../components/inspector/DetailPanel";
 import { useVisualizationStore } from "../store/visualizationStore";
 import { useLoadAnalysis } from "../hooks/useLoadAnalysis";
+import { loadFromLocalStore, downloadAsJson } from "../lib/localStore";
+import type { LocalAnalysis } from "../lib/localStore";
 import { supabase } from "../lib/supabase";
 import type { ParsedProject } from "../types";
 import type { FunctionExplanation } from "../types/analysis";
@@ -181,26 +186,34 @@ export default function AnalysisView() {
   const panelOpen = useVisualizationStore((s) => s.panelOpen);
 
   const loader = useLoadAnalysis();
+  const [localData, setLocalData] = useState<LocalAnalysis | null>(null);
+  const [localLoading, setLocalLoading] = useState(false);
 
   const state = location.state as AnalysisViewLocationState | null;
 
   // ── Determine data source ─────────────────────────────────────────
   //
   // Priority 1: location.state (fresh analysis from pipeline fallback)
-  // Priority 2: sessionStorage cache (restored on navigate-back)
-  // Priority 3: loader from Supabase DB (saved analyses)
+  // Priority 2: IndexedDB (local-* IDs, survives browser restarts)
+  // Priority 3: sessionStorage cache (session-* IDs, ephemeral)
+  // Priority 4: loader from Supabase DB (real UUIDs)
 
-  // Try to restore from sessionStorage when location.state is missing
+  const isLocalId = projectId?.startsWith("local-") ?? false;
+  const isSessionId = projectId?.startsWith("session-") ?? false;
+
+  // Try to restore from sessionStorage (priority 3 — before we decide
+  // whether hasLocationState, because location.state might be missing)
   const restoredState = useMemo(
     () => {
-      if (!state?.project && projectId?.startsWith("session-")) {
-        return loadCachedFreshData(projectId);
+      if (!state?.project && isSessionId) {
+        return loadCachedFreshData(projectId!);
       }
       return null;
     },
-    [state?.project, projectId],
+    [state?.project, projectId, isSessionId],
   );
 
+  // Determine whether we have location state (priorities 1 & 3)
   const effectiveState = state ?? restoredState;
   const freshProject: ParsedProject | null = effectiveState?.project ?? null;
   const freshExplanations: Map<string, FunctionExplanation> = recordToMap(
@@ -208,12 +221,23 @@ export default function AnalysisView() {
   );
   const hasLocationState = !!effectiveState?.project;
 
+  // Priority 2: load from IndexedDB when navigating to a local-* ID
+  useEffect(() => {
+    if (!hasLocationState && isLocalId && projectId) {
+      setLocalLoading(true);
+      loadFromLocalStore(projectId)
+        .then((data) => setLocalData(data))
+        .catch(() => setLocalData(null))
+        .finally(() => setLocalLoading(false));
+    }
+  }, [projectId, isLocalId, hasLocationState]);
+
   // Mirror location.state into sessionStorage so it survives navigation
   useEffect(() => {
-    if (state?.project && projectId?.startsWith("session-")) {
-      cacheFreshData(projectId, state);
+    if (state?.project && isSessionId) {
+      cacheFreshData(projectId!, state);
     }
-  }, [state, projectId]);
+  }, [state, projectId, isSessionId]);
 
   // ── Rename state ──────────────────────────────────────────────────
   const [renaming, setRenaming] = useState(false);
@@ -223,18 +247,15 @@ export default function AnalysisView() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Priority 3: load from DB when navigating from dashboard / direct URL
+  // Priority 4: load from DB when navigating from dashboard / direct URL
   useEffect(() => {
-    if (!hasLocationState && projectId && projectId.startsWith("session-")) {
-      // session-* IDs are ephemeral-only (save failed). Skip DB load.
-      // Data comes from sessionStorage cache (restoredState).
-      return;
-    }
+    if (!hasLocationState && isSessionId) return;
+    if (!hasLocationState && isLocalId) return;
     if (!hasLocationState && projectId) {
       loader.load(projectId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, hasLocationState]);
+  }, [projectId, hasLocationState, isSessionId, isLocalId]);
 
   // Reset visualization state when leaving / project changes
   useEffect(() => {
@@ -244,16 +265,28 @@ export default function AnalysisView() {
 
   // ── Determine what to render ──────────────────────────────────────
 
-  const project = hasLocationState ? freshProject : loader.analysis?.project ?? null;
+  const project = hasLocationState
+    ? freshProject
+    : localData
+      ? (localData.project as ParsedProject)
+      : (loader.analysis?.project ?? null);
   const explanations = hasLocationState
     ? freshExplanations
-    : loader.analysis?.explanations ?? new Map();
+    : localData
+      ? new Map(localData.explanations as Array<[string, FunctionExplanation]>)
+      : (loader.analysis?.explanations ?? new Map());
   const displayName = hasLocationState
     ? (effectiveState?.name ?? "Analysis")
-    : (loader.analysis?.name ?? "Analysis");
-  const fileCount = project?.files.length ?? loader.analysis?.fileCount ?? 0;
+    : localData
+      ? localData.name
+      : (loader.analysis?.name ?? "Analysis");
+  const fileCount = hasLocationState
+    ? project?.files.length ?? 0
+    : localData
+      ? localData.fileCount
+      : (loader.analysis?.fileCount ?? 0);
   const fnCount = explanations.size;
-  const isSavedAnalysis = !hasLocationState && !!projectId && !projectId.startsWith("session-");
+  const isSavedAnalysis = !hasLocationState && !!projectId && !isSessionId;
 
   // Sync renameName when displayName changes
   useEffect(() => {
@@ -263,13 +296,35 @@ export default function AnalysisView() {
   const explainer: UseExplanationResult = {
     status: project ? "done" : "idle",
     explanations,
-    failedIds: hasLocationState ? (effectiveState?.failedIds ?? []) : (loader.analysis?.failedIds ?? []),
+    failedIds: hasLocationState ? (effectiveState?.failedIds ?? []) : localData ? localData.failedIds : (loader.analysis?.failedIds ?? []),
     progress: { explained: fnCount, totalFunctions: fnCount },
     error: null,
     run: () => {},
     retry: () => {},
     reset: () => {},
   };
+
+  // ── Download handler (local analyses) ───────────────────────────
+
+  const handleDownload = useCallback(() => {
+    if (!localData || !projectId) return;
+    downloadAsJson(localData);
+  }, [localData, projectId]);
+
+  // ── Local delete handler ──────────────────────────────────────────
+
+  const handleLocalDelete = useCallback(async () => {
+    if (!projectId || !isLocalId) return;
+    setDeleting(true);
+    try {
+      const { deleteFromLocalStore } = await import("../lib/localStore");
+      await deleteFromLocalStore(projectId);
+      navigate("/dashboard", { replace: true });
+    } catch {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  }, [projectId, isLocalId, navigate]);
 
   // ── Rename handler ────────────────────────────────────────────────
 
@@ -314,9 +369,9 @@ export default function AnalysisView() {
     }
   }, [projectId, isSavedAnalysis, navigate]);
 
-  // ── Loading state (DB) ────────────────────────────────────────────
+  // ── Loading state (DB or IndexedDB) ───────────────────────────────
 
-  if (loader.status === "loading") {
+  if ((loader.status === "loading" || localLoading) && !hasLocationState) {
     return (
       <PageLayout>
         <div className="flex flex-col items-center justify-center py-24">
@@ -327,9 +382,9 @@ export default function AnalysisView() {
     );
   }
 
-  // ── Not found / error (DB) ────────────────────────────────────────
+  // ── Not found / error (DB, skip local- & session- IDs) ──────────
 
-  if (loader.status === "not-found" && !hasLocationState) {
+  if (loader.status === "not-found" && !hasLocationState && !isLocalId && !isSessionId) {
     return (
       <PageLayout>
         <div className="flex flex-col items-center justify-center py-24">
@@ -356,7 +411,7 @@ export default function AnalysisView() {
     );
   }
 
-  if (loader.status === "error" && !hasLocationState) {
+  if (loader.status === "error" && !hasLocationState && !isLocalId && !isSessionId) {
     return (
       <PageLayout>
         <div className="flex flex-col items-center justify-center py-24">
@@ -461,7 +516,7 @@ export default function AnalysisView() {
           title="Delete this analysis?"
           message={`This will permanently delete "${displayName}" and all its data. This cannot be undone.`}
           loading={deleting}
-          onConfirm={handleDelete}
+          onConfirm={isLocalId ? handleLocalDelete : handleDelete}
           onCancel={() => { setShowDeleteConfirm(false); setDeleting(false); }}
         />
       )}
@@ -514,7 +569,18 @@ export default function AnalysisView() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Delete button — only for saved analyses */}
+            {/* Download button — for local analyses only */}
+            {isLocalId && !!localData && (
+              <button
+                onClick={handleDownload}
+                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] text-muted hover:text-accent hover:bg-accent/10 border border-transparent hover:border-accent/20 transition-all duration-150 cursor-pointer"
+                aria-label="Download analysis as JSON"
+              >
+                <Download size={11} />
+                <span className="hidden sm:inline">Export</span>
+              </button>
+            )}
+            {/* Delete button — for saved & local analyses */}
             {isSavedAnalysis && (
               <button
                 onClick={() => setShowDeleteConfirm(true)}
@@ -527,7 +593,7 @@ export default function AnalysisView() {
             )}
             <span className="flex items-center gap-1.5 text-[10px] text-accent">
               <Loader2 size={11} className="hidden" />
-              Ready
+              {isLocalId ? "Saved locally" : "Ready"}
             </span>
           </div>
         </div>

@@ -17,6 +17,7 @@ import ProgressStepper from "../components/analysis/ProgressStepper";
 import { useParser } from "../hooks/useParser";
 import { useExplanation } from "../hooks/useExplanation";
 import { saveAnalysis } from "../hooks/useSaveAnalysis";
+import { saveToLocalStore } from "../lib/localStore";
 import type { AnalysisFile } from "../types/analysis";
 import { detectLanguage, SUPPORTED_LANGUAGES } from "../lib/languages";
 
@@ -155,6 +156,7 @@ export default function NewAnalysisPage() {
             ? `${files.length} file${files.length !== 1 ? "s" : ""}`
             : "Analysis";
 
+        // ── Primary: save to Supabase ────────────────────────────────
         const result = await saveAnalysis(
           {
             files,
@@ -172,12 +174,40 @@ export default function NewAnalysisPage() {
         if (result.saved && result.projectId) {
           savedProjectIdRef.current = result.projectId;
           setPipelineStep("complete");
-        } else {
-          setSaveError(result.error ?? "Failed to save analysis.");
-          // Still allow navigation — data lives in memory for this session
-          savedProjectIdRef.current = null;
-          setPipelineStep("complete");
+          return;
         }
+
+        // ── Fallback: save locally to IndexedDB ──────────────────────
+        setSaveProgress("local");
+        setSaveError(result.error ?? "Failed to save analysis.");
+
+        const localId = `local-${crypto.randomUUID()}`;
+        const explanationsArr = Array.from(explainer.explanations.entries());
+
+        try {
+          await saveToLocalStore({
+            id: localId,
+            project,
+            explanations: explanationsArr,
+            failedIds: explainer.failedIds,
+            name,
+            sourceType: method,
+            sourceUrl: null,
+            createdAt: new Date().toISOString(),
+            fileCount: files.length,
+            functionCount: project.files.reduce(
+              (sum, f) => sum + f.functions.length,
+              0,
+            ),
+          });
+          savedProjectIdRef.current = localId;
+          setSaveProgress("local-done");
+        } catch {
+          // Last resort — still works in-memory for this session
+          savedProjectIdRef.current = null;
+        }
+
+        setPipelineStep("complete");
       };
 
       doSave();
