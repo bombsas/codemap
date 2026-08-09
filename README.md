@@ -13,6 +13,7 @@ CodeMap is a web application that helps developers understand large and unfamili
 - **AI-powered explanations** — Each function gets a plain-English breakdown of its purpose, inputs, outputs, and internal logic (powered by OpenAI)
 - **Multiple input methods** — GitHub repository URL, ZIP file upload, or paste files directly
 - **Persistent analyses** — Save results to your account and revisit them anytime
+- **Offline fallback** — Analyses save to your browser automatically if the server is unreachable, with export/import for cross-device transfer
 - **Detail inspector** — Click any node to see full source code, callers, and callees
 
 ---
@@ -105,6 +106,7 @@ src/
 ├── lib/
 │   ├── supabase.ts       — Supabase client configuration
 │   ├── languages.ts      — Language detection helpers
+│   ├── localStore.ts     — IndexedDB persistence (offline fallback + export/import)
 │   ├── database.types.ts — Generated TypeScript types for DB schema
 │   └── queries/          — tree-sitter .scm query files (one per language)
 ├── store/
@@ -140,7 +142,7 @@ supabase/functions/
    - **Block view**: card-sized function nodes grouped by file, with expandable details
    - **Dependency graph**: edge-focused view using dagre layered layout
    - **Mind-map**: radial/hierarchical overview using elkjs
-6. **Persistence** — Results are saved to Supabase PostgreSQL (projects, files, functions, dependencies tables) under the authenticated user's scope, protected by Row-Level Security.
+6. **Persistence** — Results are saved to Supabase PostgreSQL (projects, files, functions, dependencies tables) under the authenticated user's scope, protected by Row-Level Security. If the server is unreachable, analyses are saved locally in the browser's IndexedDB instead — they survive page refreshes and can be exported as a JSON file for backup or transfer to another device.
 7. **Exploration** — Click any node to open the detail panel with full source code, explanation, callers, and callees.
 
 ---
